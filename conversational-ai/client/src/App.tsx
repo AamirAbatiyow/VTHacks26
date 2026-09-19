@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Conversation } from "./components/Conversation";
 import { IntroScreen } from "./components/IntroScreen";
 import { ProfileSetup } from "./components/ProfileSetup";
+import { WaterGarden } from "./components/WaterGarden";
 import type { SessionConfig } from "@shared/events";
-import waterGarden from "./assets/water-garden.png";
 
 export default function App() {
   const [phase, setPhase] = useState<"intro" | "transition" | "practice">("intro");
@@ -35,11 +35,18 @@ export default function App() {
         inert={phase !== "practice"}
         tabIndex={-1}
       >
-        <img className="practice-scenery" src={waterGarden} alt="" aria-hidden="true" />
-        {!profile && <ProfileSetup active={phase === "practice"} onComplete={setProfile} />}
-        <div className="practice-workspace" hidden={!profile}>
-          <Conversation initialConfig={profile} />
-        </div>
+        <WaterGarden active={phase === "practice" && !profile} />
+        {!profile && (
+          <ProfileSetup
+            active={phase === "practice"}
+            onComplete={setProfile}
+          />
+        )}
+        {profile && (
+          <div className="practice-workspace">
+            <Conversation initialConfig={profile} />
+          </div>
+        )}
       </section>
     </main>
   );

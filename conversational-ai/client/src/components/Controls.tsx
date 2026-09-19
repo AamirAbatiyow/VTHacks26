@@ -22,6 +22,8 @@ export function Controls({
   const [age, setAge] = useState("9");
   const [interests, setInterests] = useState("Minecraft, dinosaurs");
   const [targetPhoneme, setTargetPhoneme] = useState("/r/");
+  const [practiceGoals, setPracticeGoals] = useState("");
+  const [needsDescription, setNeedsDescription] = useState("");
 
   useEffect(() => {
     if (!initialConfig) return;
@@ -29,6 +31,8 @@ export function Controls({
     setAge(initialConfig.age == null ? "" : String(initialConfig.age));
     setInterests(initialConfig.interests?.join(", ") ?? "");
     setTargetPhoneme(initialConfig.targetPhoneme ?? "");
+    setPracticeGoals(initialConfig.practiceGoals?.join("\n") ?? "");
+    setNeedsDescription(initialConfig.needsDescription ?? "");
   }, [initialConfig]);
 
   return (
@@ -68,6 +72,28 @@ export function Controls({
             placeholder="/r/"
           />
         </label>
+        <label className="span-2">
+          What you would like to practice (up to 6, one per line)
+          <textarea
+            value={practiceGoals}
+            onChange={(e) => setPracticeGoals(e.target.value)}
+            disabled={sessionActive}
+            rows={3}
+            maxLength={605}
+            placeholder="Feeling more confident when speaking"
+          />
+        </label>
+        <label className="span-2">
+          In your own words
+          <textarea
+            value={needsDescription}
+            onChange={(e) => setNeedsDescription(e.target.value)}
+            disabled={sessionActive}
+            rows={3}
+            maxLength={1000}
+            placeholder="Tell us what would make conversations easier for you."
+          />
+        </label>
       </div>
 
       <div className="buttons">
@@ -84,6 +110,11 @@ export function Controls({
                   .map((s) => s.trim())
                   .filter(Boolean),
                 targetPhoneme: targetPhoneme.trim() || undefined,
+                practiceGoals: practiceGoals
+                  .split("\n")
+                  .map((goal) => goal.trim())
+                  .filter(Boolean),
+                needsDescription: needsDescription.trim() || undefined,
               })
             }
           >
