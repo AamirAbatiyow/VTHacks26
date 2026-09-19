@@ -6,6 +6,7 @@ import {
   type ServerJsonEvent,
   type SessionConfig,
   type SpeechSignal,
+  type StutterAnalysis,
   type TurnMetrics,
 } from "@shared/events";
 import { MicrophoneStream } from "../audio/recorder";
@@ -19,6 +20,7 @@ export interface TranscriptEntry {
   interim?: boolean;
   interrupted?: boolean;
   signal?: SpeechSignal;
+  stutter?: StutterAnalysis;
 }
 
 export interface ProviderStatuses {
@@ -187,6 +189,23 @@ export function useVoiceSession() {
             }`,
           );
           break;
+        case "stutter_analysis": {
+          // Arrives after transcript_final; attach to the matching user turn.
+          setState((s) => ({
+            ...s,
+            transcripts: s.transcripts.map((t) =>
+              t.id === ev.turnId ? { ...t, stutter: ev.analysis } : t,
+            ),
+          }));
+          const hits = ev.analysis.events
+            .filter((e) => e.detected && e.label !== "Fluent")
+            .map((e) => `${e.label} ${e.probability.toFixed(2)}`);
+          pushLog(
+            `[STUTTER] ${hits.length ? hits.join(", ") : "none detected"} ` +
+              `(fluency ${ev.analysis.fluency.toFixed(2)}, ${ev.analysis.inferenceMs}ms)`,
+          );
+          break;
+        }
         case "user_speech_started":
           // Server-side barge-in may also fire; client VAD usually already cleared.
           if (activeGenRef.current) {

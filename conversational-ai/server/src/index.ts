@@ -6,6 +6,7 @@ import { loadConfig } from "./config.js";
 import { logger } from "./logger.js";
 import { GeminiClient } from "./services/gemini.js";
 import { VoiceSession } from "./websocket/session.js";
+import { StutterClassifier } from "./analysis/StutterClassifier.js";
 
 async function main(): Promise<void> {
   let config;
@@ -30,6 +31,9 @@ async function main(): Promise<void> {
     config.geminiModelPreference,
   );
 
+  // One ONNX session shared by every connection — loading is lazy and cached.
+  const stutter = new StutterClassifier(config.stutterModelPath);
+
   const app = express();
   app.use(cors());
   app.get("/health", (_req, res) => {
@@ -45,7 +49,7 @@ async function main(): Promise<void> {
 
   wss.on("connection", (ws) => {
     try {
-      const session = new VoiceSession(ws, config, gemini);
+      const session = new VoiceSession(ws, config, gemini, stutter);
       session.attach();
     } catch (err) {
       logger.error("SESSION", "failed to create session", String(err));

@@ -1,0 +1,230 @@
+import fs from "node:fs";
+import path from "node:path";
+import { performance } from "node:perf_hooks";
+import * as ort from "onnxruntime-node";
+
+import { logger } from "../logger.js";
+import type {
+  StutterAnalysis,
+  StutterEventScore,
+  StutterWindow,
+} from "../../../shared/events.js";
+import type {
+  AnalyzeInput,
+  SpeechAnalysisResult,
+  SpeechAnalyzer,
+} from "./SpeechAnalyzer.js";
+
+interface ModelMeta {
+  labels: string[];
+  sampleRate: number;
+  clipSamples: number;
+  thresholds: Record<string, number>;
+}
+
+/** Below this RMS a window is treated as silence and skipped entirely. */
+const SILENCE_RMS = 0.003;
+/** Guard against pathologically long utterances producing huge batches. */
+const MAX_WINDOWS = 24;
+const DEFAULT_THRESHOLD = 0.5;
+
+/**
+ * Multi-label stutter event classifier (SEP-28k).
+ *
+ * Runs on the ORIGINAL microphone PCM, never on the transcript. The ONNX graph
+ * contains its own log-mel frontend, so all we hand it is float32 samples.
+ * If the model file is absent the classifier stays disabled and the rest of the
+ * pipeline is unaffected.
+ */
+export class StutterClassifier implements SpeechAnalyzer {
+  private session: ort.InferenceSession | null = null;
+  private meta: ModelMeta | null = null;
+  private loading: Promise<void> | null = null;
+  private failed = false;
+
+  constructor(private readonly modelPath: string) {}
+
+  get enabled(): boolean {
+    return !this.failed;
+  }
+
+  private async load(): Promise<void> {
+    if (this.session || this.failed) return;
+    if (this.loading) return this.loading;
+
+    this.loading = (async () => {
+      const metaPath = this.modelPath.replace(/\.onnx$/, ".json");
+      if (!fs.existsSync(this.modelPath) || !fs.existsSync(metaPath)) {
+        logger.warn(
+          "ANALYSIS",
+          `stutter model not found at ${path.resolve(this.modelPath)} — detection disabled. ` +
+            `Train it with ml/stutter (see ml/stutter/README.md).`,
+        );
+        this.failed = true;
+        return;
+      }
+      try {
+        this.meta = JSON.parse(fs.readFileSync(metaPath, "utf8")) as ModelMeta;
+        this.session = await ort.InferenceSession.create(this.modelPath, {
+          executionProviders: ["cpu"],
+          graphOptimizationLevel: "all",
+        });
+        logger.info(
+          "ANALYSIS",
+          `stutter model loaded: ${this.meta.labels.join(", ")} @ ${this.meta.sampleRate}Hz`,
+        );
+      } catch (err) {
+        logger.warn("ANALYSIS", `failed to load stutter model: ${String(err)}`);
+        this.failed = true;
+      }
+    })();
+
+    return this.loading;
+  }
+
+  async classify(
+    pcm16: Buffer,
+    sampleRate: number,
+  ): Promise<StutterAnalysis | null> {
+    await this.load();
+    if (!this.session || !this.meta) return null;
+
+    const { clipSamples, labels } = this.meta;
+    let samples = pcm16ToFloat32(pcm16);
+    if (sampleRate !== this.meta.sampleRate) {
+      samples = resampleLinear(samples, sampleRate, this.meta.sampleRate);
+    }
+    if (samples.length === 0) return null;
+
+    const starts = windowStarts(samples.length, clipSamples);
+    const kept: number[] = [];
+    const batch: Float32Array[] = [];
+    for (const start of starts) {
+      const win = slicePadded(samples, start, clipSamples);
+      if (rms(win) < SILENCE_RMS) continue;
+      kept.push(start);
+      batch.push(win);
+      if (batch.length >= MAX_WINDOWS) break;
+    }
+    if (batch.length === 0) return null;
+
+    const flat = new Float32Array(batch.length * clipSamples);
+    batch.forEach((w, i) => flat.set(w, i * clipSamples));
+
+    const t0 = performance.now();
+    const output = await this.session.run({
+      waveform: new ort.Tensor("float32", flat, [batch.length, clipSamples]),
+    });
+    const inferenceMs = performance.now() - t0;
+
+    const logits = output.logits.data as Float32Array;
+    const nLabels = labels.length;
+    const msPerSample = 1000 / this.meta.sampleRate;
+
+    const windows: StutterWindow[] = kept.map((start, i) => ({
+      startMs: Math.round(start * msPerSample),
+      endMs: Math.round((start + clipSamples) * msPerSample),
+      scores: Array.from({ length: nLabels }, (_, c) =>
+        round3(sigmoid(logits[i * nLabels + c])),
+      ),
+    }));
+
+    // An event anywhere in the utterance counts, so aggregate with max.
+    const events: StutterEventScore[] = labels.map((label, c) => {
+      const probability = Math.max(...windows.map((w) => w.scores[c]));
+      const threshold = this.meta!.thresholds[label] ?? DEFAULT_THRESHOLD;
+      return { label, probability: round3(probability), detected: probability >= threshold };
+    });
+
+    const fluentIdx = labels.indexOf("Fluent");
+    const fluency =
+      fluentIdx >= 0
+        ? round3(
+            windows.reduce((a, w) => a + w.scores[fluentIdx], 0) / windows.length,
+          )
+        : 0;
+
+    return {
+      labels,
+      events,
+      windows,
+      fluency,
+      analyzedMs: Math.round(samples.length * msPerSample),
+      inferenceMs: Math.round(inferenceMs),
+    };
+  }
+
+  /** SpeechAnalyzer adapter so detected events can reach conversation context. */
+  async analyze(input: AnalyzeInput): Promise<SpeechAnalysisResult> {
+    const analysis = await this.classify(input.pcm16, input.sampleRate);
+    if (!analysis) {
+      return { targetPhoneme: input.targetPhoneme, observations: [] };
+    }
+    const detected = analysis.events.filter(
+      (e) => e.detected && e.label !== "Fluent",
+    );
+    return {
+      targetPhoneme: input.targetPhoneme,
+      confidence: analysis.fluency,
+      observations: detected.map((e) => ({
+        kind: "stutter_event",
+        label: e.label,
+        probability: e.probability,
+      })),
+    };
+  }
+}
+
+function pcm16ToFloat32(buf: Buffer): Float32Array {
+  const n = Math.floor(buf.length / 2);
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) out[i] = buf.readInt16LE(i * 2) / 32768;
+  return out;
+}
+
+function windowStarts(total: number, clip: number): number[] {
+  if (total <= clip) return [0];
+  const hop = Math.floor(clip / 2);
+  const starts: number[] = [];
+  for (let s = 0; s + clip <= total; s += hop) starts.push(s);
+  const last = starts[starts.length - 1];
+  // Cover the tail so a stutter at the very end is not missed.
+  if (last + clip < total) starts.push(total - clip);
+  return starts;
+}
+
+function slicePadded(src: Float32Array, start: number, length: number): Float32Array {
+  const out = new Float32Array(length);
+  const end = Math.min(src.length, start + length);
+  if (start < end) out.set(src.subarray(start, end), 0);
+  return out;
+}
+
+function rms(x: Float32Array): number {
+  let sum = 0;
+  for (let i = 0; i < x.length; i++) sum += x[i] * x[i];
+  return Math.sqrt(sum / x.length);
+}
+
+function resampleLinear(x: Float32Array, from: number, to: number): Float32Array {
+  const ratio = to / from;
+  const n = Math.floor(x.length * ratio);
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const pos = i / ratio;
+    const i0 = Math.floor(pos);
+    const frac = pos - i0;
+    const a = x[i0] ?? 0;
+    const b = x[i0 + 1] ?? a;
+    out[i] = a + (b - a) * frac;
+  }
+  return out;
+}
+
+function sigmoid(x: number): number {
+  return 1 / (1 + Math.exp(-x));
+}
+
+function round3(n: number): number {
+  return Math.round(n * 1000) / 1000;
+}

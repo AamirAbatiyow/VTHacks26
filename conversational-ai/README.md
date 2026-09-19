@@ -6,7 +6,7 @@ Real-time, interruptible conversational voice pipeline for a multimodal speech-c
 Browser mic (PCM16 16 kHz)
         │
         ▼
- Node WebSocket server  ──fan-out──► (future SpeechAnalyzer)
+ Node WebSocket server  ──fan-out──► StutterClassifier (ONNX, SEP-28k)
         │
         ▼
    ElevenLabs Scribe v2 (streaming STT)
@@ -25,6 +25,7 @@ Browser mic (PCM16 16 kHz)
 
 - **True streaming** at every hop (no full-utterance upload, no wait-for-full-LLM)
 - **Barge-in / interruption** with generation IDs (late audio dropped)
+- **Stutter event detection** on the raw mic audio, off the response critical path
 - **Conversation history** with optional `speechAnalysis` metadata hook
 - **Latency instrumentation** (STT / Gemini / TTS / total — measured, not fabricated)
 - **API keys stay server-side**
@@ -141,14 +142,32 @@ original microphone PCM (not from the transcript text). The server downsamples
 the utterance to ~240 peak-signed samples in `[-1, 1]` and the UI draws it under
 the USER line.
 
-## Future SpeechAnalyzer integration
+## Stutter event detection
 
 ```
-Browser microphone ──┬── ElevenLabs Scribe STT
-                     └── SpeechAnalyzer.analyze(pcm16) → metadata → Gemini
+Browser microphone ──┬── ElevenLabs Scribe STT  → transcript
+                     └── StutterClassifier(pcm16) → stutter_analysis event
 ```
 
-Do **not** use Scribe transcripts as the pronunciation-analysis source. Original mic PCM is buffered per session and passed to:
+A multi-label CNN trained on [SEP-28k](https://github.com/apple/ml-stuttering-events-dataset)
+scores each finished user turn for `Prolongation`, `Block`, `SoundRep`,
+`WordRep`, `Interjection`, and `Fluent`. Training and export live in
+[`ml/stutter`](../ml/stutter/README.md).
+
+Key properties:
+
+- Runs on the **original microphone PCM**, never on the Scribe transcript.
+- Slides 3-second windows with a 1.5-second hop; windows below an RMS gate are
+  skipped so silence cannot produce false positives.
+- Runs **concurrently with the Gemini response**, so it adds nothing to spoken
+  reply latency (typically 10–40 ms per turn regardless).
+- Labels are independent sigmoids, not a softmax — a turn can be both a block
+  and a sound repetition.
+- If `server/models/stutter.onnx` is absent the classifier disables itself and
+  the voice pipeline is unaffected. Override the location with
+  `STUTTER_MODEL_PATH`.
+
+The generic hook is still there for phoneme/articulation work:
 
 ```ts
 interface SpeechAnalyzer {
@@ -156,7 +175,8 @@ interface SpeechAnalyzer {
 }
 ```
 
-MVP ships `NoOpSpeechAnalyzer`. User turns already accept optional `speechAnalysis?: { targetPhoneme?; observations? }`.
+`StutterClassifier` implements it, so detected events can be fed into
+`speechAnalysis?: { targetPhoneme?; observations? }` on a user turn.
 
 ## Project layout
 
@@ -168,7 +188,8 @@ conversational-ai/
     websocket/session.ts
     services/{scribe,gemini,elevenlabs}.ts
     conversation/{ConversationManager,TextChunker,TurnTimeline,prompt}.ts
-    analysis/SpeechAnalyzer.ts
+    analysis/{SpeechAnalyzer,StutterClassifier,UtteranceCapture,signal1d}.ts
+    models/stutter.onnx        # trained artifact (see ml/stutter)
   client/src/
     hooks/useVoiceSession.ts
     audio/{recorder,player,vad,pcm-worklet}.ts
