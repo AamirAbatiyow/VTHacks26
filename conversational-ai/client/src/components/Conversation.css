@@ -1,0 +1,200 @@
+.therapy-simulation {
+  --therapy-ink: #35584f;
+  --therapy-muted: #657e76;
+  --therapy-line: #d6e3de;
+  min-height: 100dvh;
+  color: var(--therapy-ink);
+  background: #f4f8f5;
+  font-family: "DM Sans", "Segoe UI", sans-serif;
+}
+.therapy-simulation button { color: inherit; background: transparent; border: 0; box-shadow: none; }
+.therapy-simulation button:focus-visible { outline: 2px solid #568675; outline-offset: 4px; }
+.therapy-simulation button:not(:disabled) { transition: background 180ms, color 180ms, border-color 180ms; }
+.therapy-simulation svg { flex-shrink: 0; }
+.therapy-simulation__header { min-height: 88px; padding: 0 32px; display: flex; align-items: center; justify-content: space-between; gap: 24px; border-bottom: 1px solid var(--therapy-line); }
+.therapy-simulation__identity, .therapy-simulation__header-actions { display: flex; align-items: center; gap: 25px; }
+.therapy-simulation__wordmark { width: 122px; display: block; }
+.therapy-simulation__wordmark svg { display: block; width: 100%; height: auto; }
+.therapy-simulation__header-divider { height: 23px; width: 1px; background: var(--therapy-line); }
+.therapy-simulation__page-name { font-size: 13px; }
+.therapy-simulation__private-note { display: flex; align-items: center; gap: 9px; font-size: 10px; color: var(--therapy-muted); }
+.therapy-simulation__private-note svg { width: 14px; }
+.therapy-simulation button.therapy-simulation__progress { display: flex; align-items: center; gap: 10px; border: 1px solid #c2d4c9; border-radius: 30px; padding: 11px 17px; font-size: 12px; }
+.therapy-simulation__progress > span { margin-left: 8px; }
+.therapy-simulation button.therapy-simulation__progress:hover { background: #e2ede5; }
+.therapy-simulation__layout { display: grid; grid-template-columns: 244px minmax(0, 1fr); gap: 24px; padding: 24px; max-width: 1800px; margin: auto; min-height: calc(100dvh - 88px); }
+.therapy-simulation__sidebar { display: flex; flex-direction: column; min-width: 0; padding: 18px 16px 8px; border: 1px solid var(--therapy-line); border-radius: 19px; background: linear-gradient(145deg, #fdfef9, #ecf3ed); }
+.therapy-simulation__sidebar-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; padding-inline: 8px; }
+.therapy-simulation__sidebar-title { font-family: "Libre Caslon Display", Georgia, serif; font-size: 27px; letter-spacing: -.5px; }
+.therapy-simulation button.therapy-simulation__icon-button { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border-radius: 9px; color: #698376; }
+.therapy-simulation button.therapy-simulation__icon-button:hover { background: #dde9de; }
+.therapy-simulation__settings:not([hidden]) { display: flex; flex-direction: column; flex: 1; }
+.therapy-simulation__eyebrow { margin: 0; font-size: 9px; font-weight: 500; letter-spacing: 1.7px; text-transform: uppercase; color: #688577; }
+.therapy-simulation__modes > .therapy-simulation__eyebrow { margin: 0 10px 15px; }
+.therapy-simulation__mode-list { display: grid; gap: 5px; }
+.therapy-simulation button.therapy-simulation__mode { display: flex; align-items: center; gap: 13px; min-height: 42px; padding: 8px 12px; border: 1px solid transparent; border-radius: 10px; text-align: left; font-size: 12px; }
+.therapy-simulation__mode-icon { display: grid; place-items: center; width: 21px; color: #708c7c; font-size: 21px; font-family: Georgia, serif; line-height: 1; }
+.therapy-simulation button.therapy-simulation__mode[aria-pressed="true"] { background: #dfeada; border-color: #d0dfc9; color: #3c5f45; }
+.therapy-simulation button.therapy-simulation__mode:hover:not(:disabled) { background: #e7eee4; }
+.therapy-simulation__mode-dot { margin-left: auto; width: 5px; height: 5px; border-radius: 50%; background: transparent; }
+.therapy-simulation__mode[aria-pressed="true"] .therapy-simulation__mode-dot { background: #6b895c; }
+.therapy-simulation__mode-description { font-size: 10px; color: #718173; line-height: 1.65; min-height: 33px; padding-inline: 10px; margin: 13px 0 20px; }
+.therapy-simulation__sidebar-bottom { margin-top: auto; }
+.therapy-simulation__invitation { display: flex; align-items: center; gap: 11px; margin: 12px 10px 21px; color: #778b70; }
+.therapy-simulation__invitation > span { font-size: 27px; }
+.therapy-simulation__invitation p { margin: 0; font-size: 10px; line-height: 1.65; }
+.therapy-simulation button.therapy-simulation__start { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 48px; background: #527c65; border: 1px solid #527c65; color: #fff; border-radius: 11px; font-size: 12px; }
+.therapy-simulation button.therapy-simulation__start:hover { background: #416c55; }
+.therapy-simulation__start > span { margin-left: auto; font-size: 17px; }
+.therapy-simulation__mic-note { margin: 10px 0 15px; font-size: 9px; color: #6d8075; text-align: center; }
+.therapy-simulation__tools { display: grid; grid-template-columns: repeat(3, 1fr); padding: 15px 0 13px; border-top: 1px solid var(--therapy-line); border-bottom: 1px solid var(--therapy-line); }
+.therapy-simulation button.therapy-simulation__tool { width: 100%; display: flex; align-items: center; flex-direction: column; gap: 5px; padding: 4px 0; border-radius: 8px; }
+.therapy-simulation__tool > span { font-size: 10px; }
+.therapy-simulation__tool > small { font-size: 9px; color: #74877b; }
+.therapy-simulation button.therapy-simulation__tool:hover { background: #e0eadd; }
+.therapy-simulation button.therapy-simulation__tool[aria-pressed="true"] { color: #46674b; background: #e0e9d9; }
+.therapy-simulation__pace-wrap { position: relative; }
+.therapy-simulation__pace-menu { position: absolute; z-index: 6; bottom: calc(100% + 16px); left: -8px; width: 200px; padding: 13px; background: #fbfdf9; box-shadow: 0 10px 40px #34534720; border: 1px solid #cedfd4; border-radius: 13px; }
+.therapy-simulation__pace-menu > p { font-size: 11px; font-weight: 500; margin: 0 7px 9px; }
+.therapy-simulation__pace-menu > button { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 36px; border-radius: 7px; font-size: 12px; padding: 8px; }
+.therapy-simulation__pace-menu > button[aria-pressed="true"], .therapy-simulation__pace-menu > button:hover { background: #e5eee3; }
+.therapy-simulation__pace-menu > small { display: block; margin: 10px 7px 2px; font-size: 10px; line-height: 1.6; color: var(--therapy-muted); }
+.therapy-simulation button.therapy-simulation__help { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; padding: 14px 0 7px; color: #698174; font-size: 10px; }
+.therapy-simulation__help svg { width: 14px; height: 14px; }
+.therapy-simulation__main { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.therapy-simulation__stage { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 410px; isolation: isolate; overflow: hidden; border: 1px solid #cadfd9; border-radius: 23px; background: radial-gradient(ellipse at 68% 65%, #e7eee0 0%, transparent 58%), linear-gradient(115deg, #e5f0e9, #dceef0); }
+.therapy-simulation__stage::after { content: ""; position: absolute; z-index: -1; inset: 0; box-shadow: inset 0 0 70px #ffffff50; pointer-events: none; border-radius: inherit; }
+.therapy-simulation__stage-heading { position: relative; z-index: 2; display: flex; justify-content: space-between; align-items: start; gap: 15px; padding: 27px 30px 0; pointer-events: none; }
+.therapy-simulation__stage-heading h2 { font-family: "Libre Caslon Display", Georgia, serif; font-weight: 400; font-size: clamp(40px, 3.8vw, 63px); letter-spacing: -1.7px; line-height: 1.1; margin: 12px 0 0; }
+.therapy-simulation__stage-heading h2 em { font-weight: 400; color: #64856e; }
+.therapy-simulation__status { display: flex; align-items: center; gap: 7px; flex-shrink: 0; font-size: 9px; padding: 8px 12px; border: 1px solid #a6c7b759; background: #f7fcf37d; border-radius: 22px; color: #587665; }
+.therapy-simulation__status i, .therapy-simulation__footer i { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: #7f9e71; }
+.therapy-simulation__stage[data-speaking="true"] .therapy-simulation__status { background: #f6faee; border-color: #bed3b6; }
+.therapy-simulation__contours { position: absolute; inset: 30px 0 -14px; z-index: -1; }
+.therapy-simulation__stage-footer { position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: auto; padding: 23px 28px; }
+.therapy-simulation__stage-note { display: flex; align-items: center; gap: 9px; font-size: 10px; color: #537768; }
+.therapy-simulation__stage-note svg { width: 16px; }
+.therapy-simulation button.therapy-simulation__preview { display: flex; align-items: center; gap: 5px; border-radius: 25px; padding: 8px 12px; background: #f7fcf19e; border: 1px solid #bfd5c7; font-size: 10px; white-space: nowrap; }
+.therapy-simulation__preview svg { width: 13px; height: 13px; }
+.therapy-simulation button.therapy-simulation__preview:hover { background: #f8fcf5; }
+.therapy-simulation__captions { min-height: 155px; padding: 20px 28px 22px; border-radius: 17px; border: 1px solid var(--therapy-line); background: #fbfdfb; }
+.therapy-simulation__caption-heading { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+.therapy-simulation__caption-heading p { display: flex; align-items: center; gap: 9px; }
+.therapy-simulation__caption-heading svg { width: 16px; height: 16px; }
+.therapy-simulation__caption-heading > span { font-size: 9px; color: #718378; background: #eef4ed; border-radius: 15px; padding: 4px 9px; }
+.therapy-simulation__captions .voice-captions { margin: 16px 0 0; min-height: 52px; padding: 0; color: var(--therapy-ink); }
+.therapy-simulation__footer { display: flex; justify-content: space-between; align-items: start; gap: 20px; padding: 0 4px; font-size: 9px; color: #6f8375; }
+.therapy-simulation__footer > span:first-child { max-width: 78%; overflow-wrap: anywhere; }
+.therapy-simulation__footer > span:last-child { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
+.therapy-simulation__error { padding: 13px 17px; border: 1px solid #dfc6b5; border-radius: 12px; background: #fff6eb; color: #845c42; font-size: 12px; }
+.therapy-simulation__camera { position: absolute; z-index: 3; right: 24px; bottom: 76px; width: 160px; overflow: hidden; border: 3px solid #ffffffa1; border-radius: 14px; box-shadow: 0 10px 25px #34534715; background: #426b5b; }
+.therapy-simulation__camera video { display: block; width: 100%; aspect-ratio: 4/3; object-fit: cover; transform: scaleX(-1); }
+.therapy-simulation__camera > span { display: block; padding: 5px; color: white; text-align: center; font-size: 9px; }
+.therapy-simulation__camera > button { position: absolute; right: 5px; top: 5px; width: 24px; height: 24px; padding: 0; border-radius: 50%; background: #f7faf1d9; }
+.therapy-simulation [data-guide="true"] { outline: 2px solid #6f9d79; outline-offset: 7px; border-radius: 10px; }
+.therapy-simulation[data-sidebar="closed"] .therapy-simulation__layout { grid-template-columns: 66px minmax(0, 1fr); }
+.therapy-simulation[data-sidebar="closed"] .therapy-simulation__sidebar { padding: 16px 8px; }
+.therapy-simulation[data-sidebar="closed"] .therapy-simulation__sidebar-heading { padding: 0; justify-content: center; }
+.therapy-simulation[data-sidebar="closed"] .therapy-simulation__sidebar-title { display: none; }
+.therapy-simulation[data-sidebar="closed"] .therapy-simulation__icon-button svg { transform: rotate(180deg); }
+
+.simulation-guide { position: fixed; inset: 161px auto auto 288px; margin: 0; overflow: visible; width: 370px; max-width: calc(100vw - 32px); max-height: calc(100dvh - 40px); padding: 24px; border: 1px solid #c8dbcb; border-radius: 20px; background: #f9fcf6; color: #35584f; box-shadow: 0 18px 70px #264e422b; }
+.simulation-guide::before { content: ""; position: absolute; left: -7px; top: 52px; width: 12px; height: 12px; transform: rotate(45deg); border-left: 1px solid #c8dbcb; border-bottom: 1px solid #c8dbcb; background: #f9fcf6; }
+.simulation-guide::backdrop { background: #254d4526; }
+.simulation-guide__top { display: flex; align-items: center; gap: 10px; }
+.simulation-guide__icon { display: grid; place-items: center; border: 1px solid #cedfca; border-radius: 12px; width: 38px; height: 38px; background: #e6eedf; }
+.simulation-guide__top > span:nth-child(2) { font-size: 9px; letter-spacing: .5px; color: #688071; }
+.therapy-simulation .simulation-guide button { min-height: 36px; }
+.simulation-guide__top > button { margin-left: auto; font-size: 20px; padding: 0 6px; color: #688071; }
+.simulation-guide h2 { font-family: "Libre Caslon Display", Georgia, serif; font-weight: 400; font-size: 35px; line-height: 1.1; letter-spacing: -.8px; margin: 23px 0 14px; }
+.simulation-guide p { font-size: 12px; line-height: 1.8; color: #5c776b; margin: 0; }
+.simulation-guide p.simulation-guide__note { padding: 12px 13px; margin-top: 14px; border-radius: 9px; background: #edf3e8; font-size: 10px; }
+.simulation-guide__dots { display: flex; gap: 5px; margin: 21px 0 15px; }
+.simulation-guide__dots i { width: 5px; height: 5px; background: #cedfcd; border-radius: 9px; }
+.simulation-guide__dots i[data-active="true"] { width: 19px; background: #6d8f68; }
+.simulation-guide__actions, .simulation-guide__actions > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.simulation-guide__actions button { padding: 8px 9px; font-size: 11px; }
+.simulation-guide__actions > button { text-decoration: underline; text-underline-offset: 3px; color: #6c8171; padding-left: 0; }
+.therapy-simulation button.simulation-guide__next { display: flex; align-items: center; gap: 21px; padding: 10px 16px; border-radius: 9px; background: #54785d; color: white; }
+.therapy-simulation button.simulation-guide__next:hover { background: #406249; }
+@media (min-width: 1500px) {
+  .therapy-simulation__layout { padding: 32px; gap: 32px; grid-template-columns: 265px minmax(0, 1fr); }
+  .therapy-simulation__sidebar { padding: 24px 20px 14px; }
+  .therapy-simulation__mode-list { gap: 9px; }
+  .therapy-simulation__mode-list .therapy-simulation__mode { min-height: 48px; font-size: 13px; }
+  .simulation-guide { left: 322px; }
+}
+@media (max-width: 1100px) {
+  .therapy-simulation__private-note { display: none; }
+  .therapy-simulation__layout { grid-template-columns: 220px minmax(0, 1fr); gap: 18px; padding: 20px; }
+  .therapy-simulation__stage-heading { padding: 24px; }
+  .therapy-simulation__stage-heading h2 { font-size: 44px; }
+  .therapy-simulation__stage-heading .therapy-simulation__eyebrow { font-size: 8px; letter-spacing: 1.1px; }
+  .therapy-simulation__status { font-size: 8px; padding: 7px 8px; }
+  .therapy-simulation__stage-footer { padding: 18px; }
+  .simulation-guide { left: 263px; }
+}
+@media (max-width: 760px) {
+  .therapy-simulation__header { min-height: 76px; padding: 0 20px; gap: 12px; }
+  .therapy-simulation__wordmark { width: 96px; }
+  .therapy-simulation__identity { gap: 13px; }
+  .therapy-simulation__page-name { font-size: 10px; max-width: 70px; }
+  .therapy-simulation__header-divider { height: 21px; }
+  .therapy-simulation button.therapy-simulation__progress { font-size: 10px; padding: 9px 12px; gap: 7px; }
+  .therapy-simulation__progress > svg { width: 15px; }
+  .therapy-simulation__progress > span { display: none; }
+  .therapy-simulation__layout, .therapy-simulation[data-sidebar="closed"] .therapy-simulation__layout { display: flex; flex-direction: column; padding: 16px; gap: 16px; }
+  .therapy-simulation__sidebar { padding: 14px; border-radius: 16px; }
+  .therapy-simulation__sidebar-heading { margin: 0 0 12px; }
+  .therapy-simulation__sidebar-title { font-size: 24px; }
+  .therapy-simulation__mode-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .therapy-simulation button.therapy-simulation__mode { padding: 9px 6px; font-size: 10px; gap: 6px; min-height: 40px; }
+  .therapy-simulation__mode-icon { font-size: 17px; width: 17px; }
+  .therapy-simulation__mode-dot { display: none; }
+  .therapy-simulation__modes > .therapy-simulation__eyebrow { margin: 0 6px 10px; font-size: 8px; }
+  .therapy-simulation__mode-description { margin: 10px 6px 14px; padding: 0; min-height: 0; }
+  .therapy-simulation__sidebar-bottom { display: grid; grid-template-columns: 1fr 1fr; column-gap: 17px; align-items: center; }
+  .therapy-simulation__invitation { display: none; }
+  .therapy-simulation__mic-note { font-size: 8px; line-height: 1.6; margin-bottom: 0; }
+  .therapy-simulation__tools { border: 0; padding: 0; }
+  .therapy-simulation button.therapy-simulation__tool { gap: 4px; }
+  .therapy-simulation__tool > span, .therapy-simulation__tool > small { font-size: 9px; }
+  .therapy-simulation__tool svg { width: 17px; height: 17px; }
+  .therapy-simulation__help { grid-column: 1/-1; }
+  .therapy-simulation button.therapy-simulation__help { padding: 15px 0 0; }
+  .therapy-simulation__pace-menu { left: auto; right: -85px; }
+  .therapy-simulation__stage { min-height: 370px; border-radius: 19px; }
+  .therapy-simulation__stage-heading { display: block; padding: 23px; }
+  .therapy-simulation__stage-heading h2 { font-size: 42px; }
+  .therapy-simulation__status { width: fit-content; margin-top: 13px; }
+  .therapy-simulation__contours { inset: 48px -70px -8px; }
+  .therapy-simulation__stage-footer { gap: 10px; padding: 14px; }
+  .therapy-simulation__stage-note { gap: 6px; font-size: 9px; max-width: 48%; }
+  .therapy-simulation__stage-note svg { width: 13px; }
+  .therapy-simulation button.therapy-simulation__preview { padding: 7px 10px; font-size: 9px; }
+  .therapy-simulation__captions { padding: 18px; min-height: 150px; }
+  .therapy-simulation__caption-heading .therapy-simulation__eyebrow { font-size: 8px; letter-spacing: 1.3px; }
+  .therapy-simulation__footer { font-size: 8px; line-height: 1.7; }
+  .therapy-simulation[data-sidebar="closed"] .therapy-simulation__sidebar { padding: 9px 16px; }
+  .therapy-simulation[data-sidebar="closed"] .therapy-simulation__sidebar-heading { justify-content: space-between; margin: 0; }
+  .therapy-simulation[data-sidebar="closed"] .therapy-simulation__sidebar-title { display: block; }
+  .simulation-guide { inset: 0; margin: auto; height: fit-content; width: 370px; overflow-y: auto; padding: 24px; }
+  .simulation-guide::before { display: none; }
+  .therapy-simulation__camera { width: 115px; right: 16px; bottom: 65px; }
+}
+@media (min-width: 761px) and (max-height: 820px) {
+  .therapy-simulation__header { min-height: 72px; }
+  .therapy-simulation__layout { padding-block: 18px; min-height: calc(100dvh - 72px); }
+  .therapy-simulation__sidebar-heading { margin-bottom: 13px; }
+  .therapy-simulation__modes > .therapy-simulation__eyebrow { margin-bottom: 10px; }
+  .therapy-simulation__mode-list { gap: 3px; }
+  .therapy-simulation__mode-list .therapy-simulation__mode { min-height: 38px; }
+  .therapy-simulation__mode-description { margin-bottom: 6px; }
+  .therapy-simulation__invitation { display: none; }
+  .therapy-simulation__stage { min-height: 360px; }
+  .therapy-simulation__captions { min-height: 141px; padding-block: 16px; }
+  .therapy-simulation__sidebar-bottom { margin-top: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .therapy-simulation *, .therapy-simulation *::before, .therapy-simulation *::after { transition: none !important; }
+}

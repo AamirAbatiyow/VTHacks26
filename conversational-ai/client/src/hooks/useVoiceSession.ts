@@ -33,10 +33,15 @@ export interface ProviderStatuses {
 export interface VoiceSessionState {
   connected: boolean;
   sessionActive: boolean;
+  isStarting: boolean;
+  assistantSpeaking: boolean;
+  micMuted: boolean;
   statuses: ProviderStatuses;
   transcripts: TranscriptEntry[];
   interimText: string;
   assistantStreaming: string;
+  /** Last utterance identity, retained when playback drains or is interrupted. */
+  assistantUtteranceId: string | null;
   activeGenerationId: string | null;
   metrics: TurnMetrics | null;
   error: string | null;
@@ -83,10 +88,14 @@ export function useVoiceSession() {
   const [state, setState] = useState<VoiceSessionState>({
     connected: false,
     sessionActive: false,
+    isStarting: false,
+    assistantSpeaking: false,
+    micMuted: false,
     statuses: initialStatuses,
     transcripts: [],
     interimText: "",
     assistantStreaming: "",
+    assistantUtteranceId: null,
     activeGenerationId: null,
     metrics: null,
     error: null,
@@ -99,7 +108,13 @@ export function useVoiceSession() {
   const vadRef = useRef<EnergyVad | null>(null);
   const activeGenRef = useRef<string | null>(null);
   const audioRecvAtRef = useRef<number | null>(null);
-  const pendingConfigRef = useRef<SessionConfig>({});
+  const sessionVersionRef = useRef(0);
+  const startingRef = useRef(false);
+  const micMutedRef = useRef(false);
+  const mountedRef = useRef(true);
+  const cancelConnectRef = useRef<(() => void) | null>(null);
+  const sessionReadyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const interruptedGenerationsRef = useRef(new Set<string>());
 
   const pushLog = useCallback((line: string) => {
     setState((s) => ({
@@ -118,6 +133,7 @@ export function useVoiceSession() {
   const interruptNow = useCallback(
     (generationId: string | null) => {
       if (!generationId) return;
+      interruptedGenerationsRef.current.add(generationId);
       console.info("[USER] interruption detected");
       playerRef.current?.clear();
       playerRef.current?.setActiveGeneration(null);
@@ -127,30 +143,106 @@ export function useVoiceSession() {
       setState((s) => ({
         ...s,
         activeGenerationId: null,
-        assistantStreaming: s.assistantStreaming
-          ? s.assistantStreaming
-          : s.assistantStreaming,
+        assistantSpeaking: false,
       }));
     },
     [sendJson],
   );
 
+  const cleanupMedia = useCallback(() => {
+    vadRef.current?.detach();
+    vadRef.current = null;
+    micRef.current?.stop();
+    micRef.current = null;
+    playerRef.current?.setOnPlaybackState(null);
+    playerRef.current?.setOnFirstPlay(null);
+    playerRef.current?.setOnDrained(null);
+    playerRef.current?.stop();
+    playerRef.current = null;
+    activeGenRef.current = null;
+    audioRecvAtRef.current = null;
+  }, []);
+
+  const closeConnection = useCallback(() => {
+    sessionVersionRef.current += 1;
+    startingRef.current = false;
+    if (sessionReadyTimerRef.current) clearTimeout(sessionReadyTimerRef.current);
+    sessionReadyTimerRef.current = null;
+    cancelConnectRef.current?.();
+    cancelConnectRef.current = null;
+    cleanupMedia();
+    const ws = wsRef.current;
+    wsRef.current = null;
+    if (ws) {
+      ws.onmessage = null;
+      ws.onclose = null;
+      ws.onerror = null;
+      try {
+        ws.close();
+      } catch {
+        /* already closed */
+      }
+    }
+  }, [cleanupMedia]);
+
+  const endConversation = useCallback(() => {
+    sendJson({ type: "end_session" });
+    closeConnection();
+    setState((s) => ({
+      ...s,
+      connected: false,
+      sessionActive: false,
+      isStarting: false,
+      assistantSpeaking: false,
+      activeGenerationId: null,
+      interimText: "",
+      assistantStreaming: "",
+      statuses: initialStatuses,
+    }));
+  }, [closeConnection, sendJson]);
+
+  const toggleMicrophone = useCallback(() => {
+    const muted = !micMutedRef.current;
+    micMutedRef.current = muted;
+    micRef.current?.getMediaStream()?.getAudioTracks().forEach((track) => {
+      track.enabled = !muted;
+    });
+    if (muted) vadRef.current?.disarm();
+    else if (playerRef.current?.isPlaying) vadRef.current?.arm();
+    setState((s) => ({ ...s, micMuted: muted }));
+  }, []);
+
   const handleServerEvent = useCallback(
     (ev: ServerJsonEvent) => {
+      if (
+        (ev.type === "assistant_text_delta" || ev.type === "assistant_speech_started" || ev.type === "assistant_speech_ended") &&
+        interruptedGenerationsRef.current.has(ev.generationId)
+      ) return;
       switch (ev.type) {
         case "session_started":
+          startingRef.current = false;
+          if (sessionReadyTimerRef.current) clearTimeout(sessionReadyTimerRef.current);
+          sessionReadyTimerRef.current = null;
           setState((s) => ({
             ...s,
             sessionActive: true,
+            isStarting: false,
             error: null,
             statuses: { ...s.statuses, session: "ready" },
           }));
           pushLog(`[SESSION] started ${ev.sessionId}`);
           break;
         case "session_ended":
+          closeConnection();
           setState((s) => ({
             ...s,
+            connected: false,
             sessionActive: false,
+            isStarting: false,
+            assistantSpeaking: false,
+            activeGenerationId: null,
+            assistantStreaming: "",
+            interimText: "",
             statuses: { ...initialStatuses, session: "closed" },
           }));
           pushLog("[SESSION] ended");
@@ -208,7 +300,7 @@ export function useVoiceSession() {
         }
         case "user_speech_started":
           // Server-side barge-in may also fire; client VAD usually already cleared.
-          if (activeGenRef.current) {
+          if (!micMutedRef.current && activeGenRef.current) {
             interruptNow(activeGenRef.current);
           }
           break;
@@ -220,22 +312,28 @@ export function useVoiceSession() {
             setState((s) => ({
               ...s,
               activeGenerationId: ev.generationId,
+              assistantUtteranceId: ev.generationId,
               assistantStreaming: ev.text,
             }));
           } else {
             setState((s) => ({
               ...s,
-              assistantStreaming: s.assistantStreaming + ev.text,
+              assistantUtteranceId: ev.generationId,
+              assistantStreaming:
+                (s.assistantUtteranceId === ev.generationId ? s.assistantStreaming : "") + ev.text,
             }));
           }
           break;
-        case "assistant_text_final":
+        case "assistant_text_final": {
+          const interrupted = ev.interrupted || interruptedGenerationsRef.current.has(ev.generationId);
           setState((s) => {
-            const text = ev.text || s.assistantStreaming;
+            const isCurrentUtterance = s.assistantUtteranceId === ev.generationId;
+            const text = ev.text || (isCurrentUtterance ? s.assistantStreaming : "");
             return {
               ...s,
-              assistantStreaming: "",
-              activeGenerationId: ev.interrupted ? null : s.activeGenerationId,
+              assistantStreaming: isCurrentUtterance ? "" : s.assistantStreaming,
+              activeGenerationId: interrupted && s.activeGenerationId === ev.generationId
+                ? null : s.activeGenerationId,
               transcripts: text
                 ? [
                     ...s.transcripts,
@@ -243,25 +341,34 @@ export function useVoiceSession() {
                       id: ev.generationId,
                       role: "assistant",
                       text,
-                      interrupted: ev.interrupted,
+                      interrupted,
                     },
                   ]
                 : s.transcripts,
             };
           });
-          if (ev.interrupted) {
+          if (interrupted && activeGenRef.current === ev.generationId) {
+            playerRef.current?.clear();
+            playerRef.current?.setActiveGeneration(null);
             activeGenRef.current = null;
             vadRef.current?.disarm();
           }
           break;
+        }
         case "assistant_speech_started":
+          if (activeGenRef.current !== ev.generationId) audioRecvAtRef.current = null;
           activeGenRef.current = ev.generationId;
           playerRef.current?.setActiveGeneration(ev.generationId);
-          vadRef.current?.arm();
-          setState((s) => ({ ...s, activeGenerationId: ev.generationId }));
+          setState((s) => ({
+            ...s,
+            activeGenerationId: ev.generationId,
+            assistantUtteranceId: ev.generationId,
+            assistantStreaming: s.assistantUtteranceId === ev.generationId ? s.assistantStreaming : "",
+          }));
           pushLog("[PLAYBACK] assistant speech started");
           break;
         case "assistant_speech_ended":
+          if (activeGenRef.current !== ev.generationId) break;
           // The server is done sending, but playback may still have seconds of
           // queued audio. Keep barge-in armed until the queue actually drains.
           playerRef.current?.setOnDrained(() => {
@@ -282,6 +389,8 @@ export function useVoiceSession() {
           playerRef.current?.markNoMoreAudio();
           break;
         case "interrupted":
+          interruptedGenerationsRef.current.add(ev.generationId);
+          if (activeGenRef.current !== ev.generationId) break;
           playerRef.current?.clear();
           playerRef.current?.setActiveGeneration(null);
           vadRef.current?.disarm();
@@ -291,6 +400,7 @@ export function useVoiceSession() {
           setState((s) => ({
             ...s,
             activeGenerationId: null,
+            assistantSpeaking: false,
           }));
           pushLog(`[USER] interrupted ${ev.generationId.slice(0, 8)}`);
           break;
@@ -306,6 +416,21 @@ export function useVoiceSession() {
           break;
         }
         case "error":
+          // Startup cannot progress after a provider failure. Release the mic
+          // and socket so Start can be retried immediately.
+          if (startingRef.current || ev.recoverable === false) {
+            closeConnection();
+            setState((s) => ({
+              ...s,
+              connected: false,
+              sessionActive: false,
+              isStarting: false,
+              assistantSpeaking: false,
+              activeGenerationId: null,
+              assistantStreaming: "",
+              statuses: { ...initialStatuses, session: "error" },
+            }));
+          }
           setState((s) => ({ ...s, error: ev.message }));
           pushLog(`[ERROR] ${ev.code}: ${ev.message}`);
           break;
@@ -316,44 +441,22 @@ export function useVoiceSession() {
           break;
       }
     },
-    [interruptNow, pushLog],
+    [closeConnection, interruptNow, pushLog],
   );
-
-  const cleanupMedia = useCallback(() => {
-    vadRef.current?.detach();
-    vadRef.current = null;
-    micRef.current?.stop();
-    micRef.current = null;
-    playerRef.current?.stop();
-    playerRef.current = null;
-    activeGenRef.current = null;
-  }, []);
-
-  const endConversation = useCallback(() => {
-    sendJson({ type: "end_session" });
-    cleanupMedia();
-    const ws = wsRef.current;
-    wsRef.current = null;
-    try {
-      ws?.close();
-    } catch {
-      /* ignore */
-    }
-    setState((s) => ({
-      ...s,
-      connected: false,
-      sessionActive: false,
-      activeGenerationId: null,
-      interimText: "",
-      assistantStreaming: "",
-      statuses: initialStatuses,
-    }));
-  }, [cleanupMedia, sendJson]);
 
   const startConversation = useCallback(
     async (config: SessionConfig) => {
+      if (startingRef.current || wsRef.current) return;
+      const version = ++sessionVersionRef.current;
+      const isCurrent = () => mountedRef.current && version === sessionVersionRef.current;
+      startingRef.current = true;
+      interruptedGenerationsRef.current.clear();
       setState((s) => ({
         ...s,
+        isStarting: true,
+        assistantSpeaking: false,
+        activeGenerationId: null,
+        assistantUtteranceId: null,
         error: null,
         transcripts: [],
         interimText: "",
@@ -367,132 +470,157 @@ export function useVoiceSession() {
           elevenlabs: "idle",
         },
       }));
-      pendingConfigRef.current = config;
-
       const player = new StreamingAudioPlayer();
-      await player.ensureReady();
-      playerRef.current = player;
-
       const mic = new MicrophoneStream();
-      micRef.current = mic;
+      try {
+        playerRef.current = player;
+        player.setOnPlaybackState((playing) => {
+          if (!isCurrent()) return;
+          if (playing && !micMutedRef.current) vadRef.current?.arm();
+          else vadRef.current?.disarm();
+          setState((s) => ({ ...s, assistantSpeaking: playing }));
+        });
+        await player.ensureReady();
+        if (!isCurrent()) return;
 
-      const ws = new WebSocket(wsUrl());
-      ws.binaryType = "arraybuffer";
-      wsRef.current = ws;
+        const ws = new WebSocket(wsUrl());
+        ws.binaryType = "arraybuffer";
+        wsRef.current = ws;
+        await new Promise<void>((resolve, reject) => {
+          const cleanup = () => {
+            clearTimeout(timer);
+            ws.removeEventListener("open", opened);
+            ws.removeEventListener("error", failed);
+            ws.removeEventListener("close", failed);
+            if (cancelConnectRef.current === cancelled) cancelConnectRef.current = null;
+          };
+          const opened = () => { cleanup(); resolve(); };
+          const failed = () => { cleanup(); reject(new Error("Voice connection unavailable")); };
+          const cancelled = () => { cleanup(); reject(new Error("Voice session cancelled")); };
+          const timer = setTimeout(failed, 10_000);
+          cancelConnectRef.current = cancelled;
+          ws.addEventListener("open", opened);
+          ws.addEventListener("error", failed);
+          ws.addEventListener("close", failed);
+        });
+        if (!isCurrent()) return;
+        setState((s) => ({ ...s, connected: true }));
+        pushLog("[SESSION] connected");
 
-      await new Promise<void>((resolve, reject) => {
-        const t = window.setTimeout(
-          () => reject(new Error("WebSocket connect timeout")),
-          10_000,
-        );
-        ws.onopen = () => {
-          window.clearTimeout(t);
-          resolve();
-        };
-        ws.onerror = () => {
-          window.clearTimeout(t);
-          reject(new Error("WebSocket connection failed"));
-        };
-      });
-
-      setState((s) => ({ ...s, connected: true }));
-      pushLog("[SESSION] connected");
-
-      ws.onmessage = (evt) => {
-        if (typeof evt.data !== "string") {
-          const decoded = decodeAssistantFrame(evt.data as ArrayBuffer);
-          if (!decoded) return;
-          if (
-            activeGenRef.current &&
-            decoded.generationId !== activeGenRef.current
-          ) {
-            return; // drop late audio
+        ws.onmessage = (evt) => {
+          if (!isCurrent()) return;
+          if (typeof evt.data !== "string") {
+            const decoded = decodeAssistantFrame(evt.data as ArrayBuffer);
+            if (!decoded || decoded.generationId !== activeGenRef.current) return;
+            if (audioRecvAtRef.current == null) audioRecvAtRef.current = performance.now();
+            player.setOnFirstPlay(() => {
+              if (!isCurrent()) return;
+              const recv = audioRecvAtRef.current;
+              if (recv != null) {
+                const playbackDelayMs = Math.round(performance.now() - recv);
+                setState((s) => {
+                  if (!s.metrics) return s;
+                  const totalMs = s.metrics.serverToFirstAudioMs != null
+                    ? s.metrics.serverToFirstAudioMs + playbackDelayMs : null;
+                  return { ...s, metrics: { ...s.metrics, playbackDelayMs, totalMs } };
+                });
+                pushLog(`[PLAYBACK] started (+${playbackDelayMs}ms after recv)`);
+              }
+              player.setOnFirstPlay(null);
+            });
+            void player.playChunk(decoded.pcm, decoded.generationId).catch(() => {
+              if (!isCurrent()) return;
+              if (activeGenRef.current === decoded.generationId) interruptNow(decoded.generationId);
+              setState((s) => ({ ...s, error: "Audio playback stopped. Please restart your session." }));
+            });
+            return;
           }
-          if (audioRecvAtRef.current == null) {
-            audioRecvAtRef.current = performance.now();
+          try {
+            handleServerEvent(JSON.parse(evt.data) as ServerJsonEvent);
+          } catch {
+            pushLog("[ERROR] malformed server event");
           }
-          player.setOnFirstPlay(() => {
-            const recv = audioRecvAtRef.current;
-            if (recv != null) {
-              const playbackDelayMs = Math.round(performance.now() - recv);
-              setState((s) => {
-                if (!s.metrics) return s;
-                const totalMs =
-                  s.metrics.serverToFirstAudioMs != null
-                    ? s.metrics.serverToFirstAudioMs + playbackDelayMs
-                    : null;
-                return {
-                  ...s,
-                  metrics: {
-                    ...s.metrics,
-                    playbackDelayMs,
-                    totalMs,
-                  },
-                };
-              });
-              pushLog(`[PLAYBACK] started (+${playbackDelayMs}ms after recv)`);
+        };
+        ws.onclose = () => {
+          if (!isCurrent()) return;
+          closeConnection();
+          setState((s) => ({
+            ...s,
+            connected: false,
+            sessionActive: false,
+            isStarting: false,
+            assistantSpeaking: false,
+            activeGenerationId: null,
+            assistantStreaming: "",
+            interimText: "",
+            error: "The voice connection closed. You can start again when you’re ready.",
+            statuses: { ...initialStatuses, session: "closed" },
+          }));
+        };
+
+        micRef.current = mic;
+        await mic.start();
+        if (!isCurrent()) return;
+        const media = mic.getMediaStream();
+        media?.getAudioTracks().forEach((track) => { track.enabled = !micMutedRef.current; });
+        mic.subscribe((pcm) => {
+          if (isCurrent() && !micMutedRef.current && ws.readyState === WebSocket.OPEN) {
+            ws.send(encodeMicFrame(pcm));
+          }
+        });
+
+        const vad = new EnergyVad();
+        vadRef.current = vad;
+        if (media) {
+          await vad.attach(media, () => {
+            if (isCurrent() && !micMutedRef.current && activeGenRef.current) {
+              interruptNow(activeGenRef.current);
             }
-            player.setOnFirstPlay(null);
           });
-          void player.playChunk(decoded.pcm, decoded.generationId);
-          return;
+          if (!isCurrent()) { vad.detach(); return; }
         }
-
-        try {
-          const msg = JSON.parse(evt.data) as ServerJsonEvent;
-          handleServerEvent(msg);
-        } catch {
-          pushLog("[ERROR] malformed server event");
-        }
-      };
-
-      ws.onclose = () => {
-        pushLog("[SESSION] websocket closed");
-        cleanupMedia();
+        sessionReadyTimerRef.current = setTimeout(() => {
+          if (!isCurrent() || !startingRef.current) return;
+          closeConnection();
+          setState((s) => ({
+            ...s,
+            connected: false,
+            sessionActive: false,
+            isStarting: false,
+            assistantSpeaking: false,
+            activeGenerationId: null,
+            error: "Your voice session took too long to start. Please try again.",
+            statuses: { ...initialStatuses, session: "error" },
+          }));
+        }, 30_000);
+        sendJson({ type: "start_session", config });
+      } catch (err) {
+        if (!isCurrent()) return;
+        const detail = err instanceof Error ? err.message : String(err);
+        closeConnection();
         setState((s) => ({
           ...s,
           connected: false,
           sessionActive: false,
-          statuses: { ...s.statuses, session: "closed" },
+          isStarting: false,
+          assistantSpeaking: false,
+          activeGenerationId: null,
+          error: detail.startsWith("Microphone") ? detail
+            : "We couldn’t connect to your voice session. Please try again.",
+          statuses: { ...initialStatuses, session: "error" },
         }));
-      };
-
-      try {
-        await mic.start();
-      } catch (err) {
-        setState((s) => ({
-          ...s,
-          error: String(err),
-          statuses: { ...s.statuses, session: "error" },
-        }));
-        endConversation();
-        return;
-      }
-
-      // Fan-out: send mic PCM to server (Scribe STT path).
-      // Future Speech Analysis can subscribe here too.
-      mic.subscribe((pcm) => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(encodeMicFrame(pcm));
+        pushLog(`[ERROR] ${detail}`);
+      } finally {
+        // A permission prompt can resolve after Stop or navigation. Release
+        // these local resources without touching a newer session’s refs.
+        if (!isCurrent()) {
+          mic.stop();
+          player.stop();
         }
-      });
-
-      const vad = new EnergyVad();
-      vadRef.current = vad;
-      const media = mic.getMediaStream();
-      if (media) {
-        await vad.attach(media, () => {
-          if (activeGenRef.current) {
-            interruptNow(activeGenRef.current);
-          }
-        });
       }
-
-      sendJson({ type: "start_session", config });
     },
     [
-      cleanupMedia,
-      endConversation,
+      closeConnection,
       handleServerEvent,
       interruptNow,
       pushLog,
@@ -505,16 +633,18 @@ export function useVoiceSession() {
   }, [interruptNow]);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
-      cleanupMedia();
-      wsRef.current?.close();
+      mountedRef.current = false;
+      closeConnection();
     };
-  }, [cleanupMedia]);
+  }, [closeConnection]);
 
   return {
     ...state,
     startConversation,
     endConversation,
     manualInterrupt,
+    toggleMicrophone,
   };
 }

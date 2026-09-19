@@ -10,6 +10,10 @@ export class StreamingAudioPlayer {
   private activeSources = new Set<AudioBufferSourceNode>();
   private validGenerationId: string | null = null;
   private playing = false;
+  private onPlaybackState: ((playing: boolean) => void) | null = null;
+  private startTimers = new Set<ReturnType<typeof setTimeout>>();
+  private queueVersion = 0;
+  private pendingChunks = 0;
   private onFirstPlay: (() => void) | null = null;
   private firstPlayFired = false;
   private readonly sampleRate: number;
@@ -32,9 +36,22 @@ export class StreamingAudioPlayer {
 
   /** Only audio for this generationId will play; others are dropped. */
   setActiveGeneration(generationId: string | null): void {
+    if (generationId === this.validGenerationId) return;
+    this.clear();
     this.validGenerationId = generationId;
     this.firstPlayFired = false;
-    this.expectMoreAudio = true;
+    this.expectMoreAudio = generationId !== null;
+  }
+
+  /** Tracks audible playback, including gaps while more audio is arriving. */
+  setOnPlaybackState(cb: ((playing: boolean) => void) | null): void {
+    this.onPlaybackState = cb;
+  }
+
+  private setPlaying(playing: boolean): void {
+    if (this.playing === playing) return;
+    this.playing = playing;
+    this.onPlaybackState?.(playing);
   }
 
   setOnFirstPlay(cb: (() => void) | null): void {
@@ -56,7 +73,7 @@ export class StreamingAudioPlayer {
   }
 
   private maybeDrained(): void {
-    if (!this.expectMoreAudio && this.activeSources.size === 0) {
+    if (!this.expectMoreAudio && this.activeSources.size === 0 && this.pendingChunks === 0) {
       this.onDrained?.();
     }
   }
@@ -66,55 +83,76 @@ export class StreamingAudioPlayer {
   }
 
   async playChunk(pcm16: ArrayBuffer, generationId: string): Promise<void> {
-    if (
-      this.validGenerationId != null &&
-      generationId !== this.validGenerationId
-    ) {
+    if (generationId !== this.validGenerationId) {
       return; // late audio from interrupted generation
     }
 
-    await this.ensureReady();
-    const ctx = this.ctx!;
-    const int16 = new Int16Array(pcm16);
-    if (int16.length === 0) return;
+    const version = this.queueVersion;
+    this.pendingChunks += 1;
+    try {
+      await this.ensureReady();
+      if (version !== this.queueVersion || generationId !== this.validGenerationId) return;
+      const ctx = this.ctx!;
+      const int16 = new Int16Array(pcm16);
+      if (int16.length === 0) return;
 
-    const float = new Float32Array(int16.length);
-    for (let i = 0; i < int16.length; i++) {
-      float[i] = int16[i]! / (int16[i]! < 0 ? 0x8000 : 0x7fff);
-    }
+      const float = new Float32Array(int16.length);
+      for (let i = 0; i < int16.length; i++) {
+        float[i] = int16[i]! / (int16[i]! < 0 ? 0x8000 : 0x7fff);
+      }
 
-    const buffer = ctx.createBuffer(1, float.length, this.sampleRate);
-    buffer.copyToChannel(float, 0);
+      const buffer = ctx.createBuffer(1, float.length, this.sampleRate);
+      buffer.copyToChannel(float, 0);
 
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(ctx.destination);
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
 
-    const now = ctx.currentTime;
-    // Small look-ahead to absorb jitter
-    const startAt = Math.max(now + 0.02, this.nextStartTime);
-    this.nextStartTime = startAt + buffer.duration;
+      const now = ctx.currentTime;
+      // Small look-ahead to absorb jitter
+      const startAt = Math.max(now + 0.02, this.nextStartTime);
+      this.nextStartTime = startAt + buffer.duration;
 
-    source.onended = () => {
-      this.activeSources.delete(source);
-      if (this.activeSources.size === 0) {
-        this.playing = false;
+      source.onended = () => {
+        this.activeSources.delete(source);
+        source.disconnect();
+        if (this.activeSources.size === 0) {
+          this.setPlaying(false);
+          this.maybeDrained();
+        }
+      };
+
+      this.activeSources.add(source);
+      source.start(startAt);
+
+      // Signal at the scheduled audio onset instead of at text generation time.
+      if (!this.playing) {
+        const timer = setTimeout(() => {
+          this.startTimers.delete(timer);
+          if (version !== this.queueVersion || !this.activeSources.has(source)) return;
+          this.setPlaying(true);
+          if (!this.firstPlayFired) {
+            this.firstPlayFired = true;
+            this.onFirstPlay?.();
+          }
+        }, Math.max(0, (startAt - ctx.currentTime) * 1000));
+        this.startTimers.add(timer);
+      }
+    } finally {
+      if (version === this.queueVersion) {
+        this.pendingChunks -= 1;
         this.maybeDrained();
       }
-    };
-
-    this.activeSources.add(source);
-    this.playing = true;
-    source.start(startAt);
-
-    if (!this.firstPlayFired) {
-      this.firstPlayFired = true;
-      this.onFirstPlay?.();
     }
   }
 
   /** Clear queued / playing audio (barge-in). */
   clear(): void {
+    this.queueVersion += 1;
+    this.pendingChunks = 0;
+    for (const timer of this.startTimers) clearTimeout(timer);
+    this.startTimers.clear();
+    this.onDrained = null;
     for (const s of this.activeSources) {
       try {
         s.onended = null;
@@ -125,7 +163,7 @@ export class StreamingAudioPlayer {
       }
     }
     this.activeSources.clear();
-    this.playing = false;
+    this.setPlaying(false);
     this.expectMoreAudio = false;
     this.nextStartTime = this.ctx?.currentTime ?? 0;
     console.info("[AUDIO] queue cleared");
@@ -136,6 +174,6 @@ export class StreamingAudioPlayer {
     this.validGenerationId = null;
     const ctx = this.ctx;
     this.ctx = null;
-    void ctx?.close();
+    void ctx?.close().catch(() => { /* already closed */ });
   }
 }

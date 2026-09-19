@@ -1,4 +1,10 @@
-import { USER_ROLES, type SessionConfig, type UserRole } from "../../../shared/events.js";
+import {
+  CONVERSATION_MODES,
+  USER_ROLES,
+  type ConversationMode,
+  type SessionConfig,
+  type UserRole,
+} from "../../../shared/events.js";
 
 /** Validate browser-supplied profile data before connecting paid providers. */
 export function parseSessionConfig(value: unknown): SessionConfig {
@@ -46,9 +52,15 @@ export function parseSessionConfig(value: unknown): SessionConfig {
     throw new Error("Choose a supported role.");
   }
 
+  const conversationMode = optionalText("conversationMode", 40);
+  if (conversationMode !== undefined && !CONVERSATION_MODES.some((mode) => mode === conversationMode)) {
+    throw new Error("Choose a supported conversation mode.");
+  }
+
   return {
     childName: optionalText("childName"),
     userRole: userRole as UserRole | undefined,
+    conversationMode: conversationMode as ConversationMode | undefined,
     age: config.age as number | undefined,
     interests: optionalList("interests"),
     targetPhoneme: optionalText("targetPhoneme"),

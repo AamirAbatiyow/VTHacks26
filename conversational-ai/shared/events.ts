@@ -14,10 +14,23 @@ export const USER_ROLES = [
 
 export type UserRole = (typeof USER_ROLES)[number];
 
+export const CONVERSATION_MODES = [
+  "default",
+  "friendly",
+  "informative",
+  "critical",
+  "conversation",
+  "business",
+] as const;
+
+export type ConversationMode = (typeof CONVERSATION_MODES)[number];
+
 /** Session configuration sent when starting a conversation. */
 export interface SessionConfig {
   childName?: string;
   userRole?: UserRole;
+  /** The conversation style selected before starting a practice session. */
+  conversationMode?: ConversationMode;
   age?: number;
   interests?: string[];
   targetPhoneme?: string;

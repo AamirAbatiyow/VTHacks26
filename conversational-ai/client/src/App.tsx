@@ -48,10 +48,7 @@ export default function App() {
           <Dashboard profile={profile} onPractice={() => setShowConversation(true)} onProfileChange={setProfile} />
         )}
         {profile && showConversation && (
-          <div className="practice-workspace">
-            <button type="button" onClick={() => setShowConversation(false)}>← Back to dashboard</button>
-            <Conversation initialConfig={profile} />
-          </div>
+          <Conversation initialConfig={profile} onBack={() => setShowConversation(false)} />
         )}
       </section>
     </main>
