@@ -28,6 +28,7 @@ import {
 import { UtteranceCapture } from "../analysis/UtteranceCapture.js";
 import { pcm16ToSignal1d } from "../analysis/signal1d.js";
 import { StutterClassifier } from "../analysis/StutterClassifier.js";
+import { stutterAnalysisToAssessment } from "../analysis/StutteringAssessment.js";
 import { DEFAULT_STUTTER_MODEL_ID } from "../analysis/modelRegistry.js";
 
 /**
@@ -526,6 +527,19 @@ export class VoiceSession {
             `${analysis.inferenceMs}ms)`,
         );
         this.send({ type: "stutter_analysis", turnId, analysis });
+        // Analytics recording is isolated from the live conversation path: if
+        // this ever throws (a mapping bug, a validation failure), it must
+        // never take down the WS event already sent above or the metadata
+        // Gemini uses for same-turn awareness below.
+        try {
+          this.analytics?.trackStutteringAssessment(
+            this.sessionId,
+            turnId,
+            stutterAnalysisToAssessment(analysis),
+          );
+        } catch (err) {
+          logger.warn("ANALYTICS", "failed to record stutter assessment", String(err));
+        }
         return stutterAnalysisToMetadata(analysis, this.sessionConfig.targetPhoneme);
       }
 
