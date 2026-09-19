@@ -225,3 +225,28 @@ is sent to the browser as a `stutter_analysis` event.
 Inference runs **concurrently with the LLM response**, not in front of it, so it
 adds no latency to the spoken reply. If the model file is missing the classifier
 disables itself and the voice pipeline runs unchanged.
+
+## Split an audio file into three-second clips and classify each one
+
+From the repository root (uses the existing Node server dependencies):
+
+```bash
+node --import ./conversational-ai/node_modules/tsx/dist/loader.mjs \
+  ml/stutter/classify_clips.ts \
+  --audio "audio samples/IMG_4042.mp3" \
+  --out "audio samples/IMG_4042_clips_new"
+```
+
+Compressed input uses FFmpeg. On machines without FFmpeg, pass
+`--decoder-library /absolute/path/to/libmpg123` to use `decode_mp3.py` with
+Python's standard library and an existing native mpg123 decoder. PCM 16-bit
+WAV input needs neither decoder.
+
+The script writes non-overlapping, three-second mono WAV files at the decoded
+sample rate and classifies each using the actual `StutterClassifier` server
+implementation, including its resampling, silence gate, thresholds, and optional
+two-head fluency model. The last clip is zero-padded; its original end timestamp
+and padding duration are recorded. It refuses to overwrite a nonempty output
+directory. `results.csv` contains timestamps, detected labels, all six model
+scores, and fluency; `results.json` also includes model metadata and per-window
+outputs. Labels are independent and can overlap, including Fluent.

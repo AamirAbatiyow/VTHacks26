@@ -1,0 +1,6 @@
+"clip","start_seconds","end_seconds","padded_seconds","status","detected","Prolongation","Block","SoundRep","WordRep","Interjection","Fluent","fluency"
+"clip_001.wav","0","3","0","classified","Fluent","0.373","0.432","0.244","0.548","0.212","0.68","0.769"
+"clip_002.wav","3","6","0","classified","WordRep;Fluent","0.322","0.438","0.122","0.656","0.639","0.693","0.59"
+"clip_003.wav","6","9","0","classified","SoundRep;WordRep","0.341","0.675","0.797","0.65","0.49","0.281","0.481"
+"clip_004.wav","9","12","0","classified","Fluent","0.285","0.48","0.543","0.439","0.146","0.607","0.646"
+"clip_005.wav","12","12.734666666666667","2.2653333333333334","classified","Prolongation;Fluent","0.756","0.484","0.087","0.009","0.314","0.642","0.462"
