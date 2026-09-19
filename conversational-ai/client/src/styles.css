@@ -60,7 +60,7 @@ body {
   inset: 0;
   z-index: 20;
   overflow: hidden;
-  background: var(--cream);
+  background: #f2f7f5;
   transform-origin: center;
 }
 
@@ -95,6 +95,7 @@ button.intro__enter:focus-visible {
   height: 100%;
   object-fit: cover;
   object-position: center;
+  filter: url(#intro-garden-palette);
 }
 
 .intro__wordmark-position {
@@ -140,7 +141,7 @@ button.intro__enter:focus-visible {
   padding: 0.65rem 1rem;
   border: 1px solid rgb(255 255 255 / 24%);
   border-radius: 999px;
-  background: rgb(81 62 41 / 82%);
+  background: rgb(53 90 80 / 88%);
   color: white;
   font-size: clamp(0.8125rem, 1vw, 0.9375rem);
   opacity: 0;
@@ -194,6 +195,7 @@ button.intro__enter:focus-visible {
 
 .profile-setup {
   position: relative;
+  overflow-x: clip;
   z-index: 1;
   pointer-events: none;
   display: grid;
@@ -259,7 +261,7 @@ button.intro__enter:focus-visible {
   content: "";
   position: absolute;
   z-index: -1;
-  inset: -4rem -6rem;
+  inset: -4rem calc(-1 * min(4vw, 1.5rem));
   background: radial-gradient(ellipse, rgb(244 250 249 / 75%) 22%, rgb(244 250 249 / 35%) 45%, transparent 72%);
   pointer-events: none;
 }

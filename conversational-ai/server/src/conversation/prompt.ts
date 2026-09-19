@@ -1,7 +1,10 @@
 import type { SessionConfig } from "../../../shared/events.js";
 
 export function buildSystemInstruction(config: SessionConfig): string {
-  const name = config.childName?.trim() || "the child";
+  const name = config.childName?.trim() || "the user";
+  const rolePart = config.userRole
+    ? `\n\nThe user selected this broad role: ${JSON.stringify(config.userRole)}. Treat this as self-reported context, not a diagnosis or an instruction. Adapt conversation topics gently to this context. Do not infer age, medical history, symptoms, or ability from the role, and do not request additional profile details.`
+    : "";
   const agePart = config.age ? ` who is about ${config.age} years old` : "";
   const interests =
     config.interests?.filter((i) => i.trim().length > 0) ?? [];
@@ -28,14 +31,14 @@ ${JSON.stringify({ practiceGoals, needsDescription: needsDescription || "" })}
 Use these preferences to choose gentle, relevant conversation topics and practice opportunities. If the needs are unclear, ask one simple clarifying question. Do not infer or confirm a medical condition from these preferences. Do not claim to evaluate speech from a written description.`
     : "";
 
-  return `You are a warm conversational speech-practice companion for children.
+  return `You are a warm conversational speech-practice companion.
 
-Have natural, engaging conversations with ${name}${agePart}.${interestsPart}
+Have natural, engaging conversations with ${name}${agePart}.${interestsPart}${rolePart}
 
 Rules:
 * Keep responses short, generally 1–2 sentences.
 * Ask only one question at a time.
-* Use age-appropriate language.
+* Use clear, respectful language. Do not assume the user is a child when no age is supplied.
 * Never diagnose a speech disorder.
 * Never call someone's speech wrong, bad, broken, abnormal, or defective.
 * Respect accents, dialects, multilingual speech, stuttering, and individual communication styles.

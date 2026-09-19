@@ -16,9 +16,14 @@ on telling stutter types apart instead of on detecting stutters.
 Final per-class probability is the cascade product:
 
     P(type_i) = P(any stutter) * P(type_i | any stutter)
-    P(Fluent) = 1 - P(any stutter)
 
 which makes the six outputs directly comparable to the single-head model's.
+
+Stage 1 predicts Fluent directly rather than as 1 - P(any stutter). SEP-28k
+annotates Fluent independently, and it agrees with "no stutter type reached 2
+votes" only 80% of the time -- 2.8k clips carry both a stutter and a Fluent
+label, and 1.3k have neither. Deriving it discards that supervision and costs
+~0.12 AUC on the Fluent class.
 """
 
 import torch
@@ -52,7 +57,8 @@ class StutterNetTwoHead(nn.Module):
         )
         self.dropout = nn.Dropout(dropout)
         self.fc_shared = nn.Linear(w * 16, 256)
-        self.head_binary = nn.Linear(256, 1)
+        # Stage 1 emits [any-stutter gate, Fluent]; both see every clip.
+        self.head_binary = nn.Linear(256, 2)
         self.head_type = nn.Linear(256, n_types)
 
     def features(self, wav: torch.Tensor) -> torch.Tensor:
@@ -65,9 +71,9 @@ class StutterNetTwoHead(nn.Module):
         return self.dropout(F.relu(self.fc_shared(self.dropout(x))))
 
     def heads(self, feat: torch.Tensor):
-        """Returns (binary_logit [B], type_logits [B, n_types])."""
+        """Returns (stage1_logits [B, 2] = (any, fluent), type_logits [B, n_types])."""
         h = self.trunk(feat)
-        return self.head_binary(h).squeeze(-1), self.head_type(h)
+        return self.head_binary(h), self.head_type(h)
 
     def forward(self, wav: torch.Tensor) -> torch.Tensor:
         """Cascade log-odds over the canonical six LABELS.
@@ -76,18 +82,15 @@ class StutterNetTwoHead(nn.Module):
         plain sigmoid and recover P — matching the single-head model's output
         contract exactly, which keeps the inference code drop-in compatible.
         """
-        bin_logit, type_logits = self.heads(self.features(wav))
-        p_any = torch.sigmoid(bin_logit).unsqueeze(-1)
-        p_type = torch.sigmoid(type_logits)
-
-        p_joint = (p_any * p_type).clamp(EPS, 1 - EPS)          # P(type and stutter)
-        p_fluent = (1 - p_any).clamp(EPS, 1 - EPS)
+        stage1, type_logits = self.heads(self.features(wav))
+        p_any = torch.sigmoid(stage1[:, :1])
+        p_joint = (p_any * torch.sigmoid(type_logits)).clamp(EPS, 1 - EPS)
 
         out = torch.empty(
             wav.shape[0], len(LABELS), device=p_joint.device, dtype=p_joint.dtype
         )
         out[:, TYPE_TO_LABEL] = torch.log(p_joint / (1 - p_joint))
-        out[:, FLUENT_IDX] = torch.log(p_fluent / (1 - p_fluent)).squeeze(-1)
+        out[:, FLUENT_IDX] = stage1[:, 1]
         return out
 
 

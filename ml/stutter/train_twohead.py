@@ -35,34 +35,37 @@ def pick_device(pref: str) -> torch.device:
 
 
 def split_targets(y_votes: torch.Tensor):
-    """From vote fractions -> (soft type targets, soft any-stutter target, hard mask).
+    """From vote fractions -> (soft type targets, soft stage-1 targets, hard mask).
 
     The soft any-stutter target is the max over stutter-type vote fractions,
     which is exactly consistent with the >=2-of-3 binarization used at eval.
+    Fluent keeps its own annotated column rather than being derived.
     """
     y_type = y_votes[:, TYPE_IDX]
     y_any = y_type.max(dim=1).values
+    y_stage1 = torch.stack([y_any, y_votes[:, FLUENT_IDX]], dim=1)
     mask = y_any >= (POSITIVE_VOTES / 3.0) - 1e-6
-    return y_type, y_any, mask
+    return y_type, y_stage1, mask
 
 
 @torch.no_grad()
 def predict(model, loader, device):
-    """Returns (P(any stutter) [N], P(type|any) [N,5], vote fractions [N,6])."""
+    """Returns (stage-1 probs [N,2] = (any, fluent), P(type|any) [N,5], votes [N,6])."""
     model.eval()
-    p_any, p_type, truth = [], [], []
+    p_stage1, p_type, truth = [], [], []
     for wav, y in loader:
         b, t = model.heads(model.features(wav.to(device)))
-        p_any.append(torch.sigmoid(b).float().cpu().numpy())
+        p_stage1.append(torch.sigmoid(b).float().cpu().numpy())
         p_type.append(torch.sigmoid(t).float().cpu().numpy())
         truth.append(y.numpy())
-    return np.concatenate(p_any), np.concatenate(p_type), np.concatenate(truth)
+    return np.concatenate(p_stage1), np.concatenate(p_type), np.concatenate(truth)
 
 
-def evaluate(p_any, p_type, votes, thresholds=None):
+def evaluate(p_stage1, p_type, votes, thresholds=None):
     """Score the cascade. Per-class probability is P(any) * P(type|any)."""
     y = (votes * 3 >= POSITIVE_VOTES - 1e-6).astype(int)
     y_any = y[:, TYPE_IDX].max(axis=1)
+    p_any, p_fluent = p_stage1[:, 0], p_stage1[:, 1]
     joint = p_any[:, None] * p_type
 
     out = {"binary": {
@@ -79,7 +82,7 @@ def evaluate(p_any, p_type, votes, thresholds=None):
     tuned = {"_binary": bin_thr}
     scores = {}
     for i, name in enumerate(LABELS):
-        col = joint[:, TYPES.index(name)] if name in TYPES else 1.0 - p_any
+        col = joint[:, TYPES.index(name)] if name in TYPES else p_fluent
         t = y[:, i]
         if t.sum() == 0 or t.sum() == len(t):
             continue
@@ -136,6 +139,10 @@ def main():
 
     if args.detach:
         import os
+        # setsid() leaves the Mach bootstrap namespace, which makes Metal's
+        # shader compiler unreachable and aborts the process on first kernel.
+        if args.device == "mps":
+            raise SystemExit("--detach cannot be combined with --device mps")
         if os.fork() > 0:
             return
         os.setsid()
@@ -174,10 +181,12 @@ def main():
     print(f"trainable params: "
           f"{sum(p.numel() for p in model.parameters() if p.requires_grad)/1e6:.2f}M", flush=True)
 
-    # Binary head is weighted against the full training set...
-    pos = max(int(tr_any.sum()), 1)
+    # Stage 1 is weighted against the full training set...
+    tr_fluent = binary[idx["train"]][:, FLUENT_IDX]
+    s1_pos = np.array([tr_any.sum(), tr_fluent.sum()]).clip(min=1)
     bin_pw = torch.tensor(
-        float(np.clip((len(tr_any) - pos) / pos, 1.0, 8.0)), device=device
+        np.clip((len(tr_any) - s1_pos) / s1_pos, 1.0, 8.0),
+        dtype=torch.float32, device=device,
     )
     # ...while the type head only ever sees stutter-positive clips, so its
     # class balance is computed on that subset.
@@ -186,7 +195,7 @@ def main():
     type_pw = torch.tensor(
         np.clip((len(sub) - tpos) / tpos, 1.0, 8.0), dtype=torch.float32, device=device
     )
-    print(f"binary pos_weight={bin_pw.item():.2f} | "
+    print(f"stage1 pos_weight={{'any': {bin_pw[0]:.2f}, 'fluent': {bin_pw[1]:.2f}}} | "
           f"type pos_weight={dict(zip(TYPES, [round(float(x),2) for x in type_pw]))}", flush=True)
 
     bin_loss = nn.BCEWithLogitsLoss(pos_weight=bin_pw)
@@ -202,11 +211,11 @@ def main():
         t0, tot_b, tot_t, seen = time.time(), 0.0, 0.0, 0
         for wav, y in loaders["train"]:
             wav, y = wav.to(device), y.to(device)
-            y_type, y_any, mask = split_targets(y)
+            y_type, y_stage1, mask = split_targets(y)
             feat = spec_augment(model.features(wav))
             b_logit, t_logit = model.heads(feat)
 
-            lb = bin_loss(b_logit, y_any)
+            lb = bin_loss(b_logit, y_stage1)
             lt = conditional_bce(t_logit, y_type, mask, type_pw)
             loss = lb + args.type_loss_weight * lt
 
@@ -219,8 +228,8 @@ def main():
             tot_t += lt.item() * len(wav)
             seen += len(wav)
 
-        p_any, p_type, truth = predict(model, loaders["val"], device)
-        metrics, thresholds = evaluate(p_any, p_type, truth)
+        p_stage1, p_type, truth = predict(model, loaders["val"], device)
+        metrics, thresholds = evaluate(p_stage1, p_type, truth)
         # Select on both objectives so stage 2 is not sacrificed for stage 1.
         score = metrics["binary"]["auc"] + metrics["macro_ap"]
         print(f"epoch {epoch:3d}  bin_loss={tot_b/seen:.4f} type_loss={tot_t/seen:.4f}  "
@@ -238,15 +247,15 @@ def main():
     print(f"\nbest val score={best['score']:.4f} @ epoch {best['epoch']} "
           f"(binary auc {best['binary_auc']:.4f})", flush=True)
     model.load_state_dict(torch.load(out_dir / "stutter_twohead.pt", map_location=device)["state_dict"])
-    p_any, p_type, truth = predict(model, loaders["test"], device)
-    test_metrics, _ = evaluate(p_any, p_type, truth, thresholds=best["thresholds"])
+    p_stage1, p_type, truth = predict(model, loaders["test"], device)
+    test_metrics, _ = evaluate(p_stage1, p_type, truth, thresholds=best["thresholds"])
     print("\nTEST (held-out episodes, thresholds tuned on val):")
     print(fmt(test_metrics))
 
     json.dump({"labels": LABELS, "types": TYPES, "thresholds": best["thresholds"],
                "best_epoch": best["epoch"], "test": test_metrics},
               open(out_dir / "metrics.json", "w"), indent=2)
-    np.savez(out_dir / "test_predictions.npz", p_any=p_any, p_type=p_type, votes=truth)
+    np.savez(out_dir / "test_predictions.npz", p_stage1=p_stage1, p_type=p_type, votes=truth)
     print(f"\nsaved {out_dir/'stutter_twohead.pt'} and {out_dir/'metrics.json'}")
 
 

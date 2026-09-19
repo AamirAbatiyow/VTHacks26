@@ -1,14 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import type { SessionConfig } from "@shared/events";
+import type { SessionConfig, UserRole } from "@shared/events";
 import { VocallyWordmark } from "./VocallyWordmark";
-import { NeedsQuestion } from "./NeedsQuestion";
+import { RoleQuestion } from "./RoleQuestion";
 
 const steps = [
   { key: "name", label: "Your name", title: "What’s your name?", hint: "Every voice has a story. Let’s start with your name.", placeholder: "Type your name here" },
-  { key: "needs", label: "Your needs", title: "What best describes you?", hint: "Choose what feels familiar. You can pick more than one, or tell us below.", placeholder: "" },
-  { key: "age", label: "Your age", title: "How old are you?", hint: "A little context helps us find your pace. This one is optional.", placeholder: "Your age" },
-  { key: "interests", label: "Your interests", title: "What makes you smile?", hint: "Share a few things you love, separated by commas.", placeholder: "Music, dinosaurs, football…" },
-  { key: "target", label: "Practice target", title: "What shall we practice?", hint: "A sound or word you’d like to work on. You can also leave this blank.", placeholder: "A sound like /r/, or a favorite word" },
+  { key: "role", label: "Your role", title: "What role best suits you?", hint: "Choose the lily pad that feels closest to you.", placeholder: "" },
 ] as const;
 
 interface Props {
@@ -18,34 +15,30 @@ interface Props {
 
 export function ProfileSetup({ active, onComplete }: Props) {
   const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState({ name: "", age: "", interests: "", target: "" });
+  const [name, setName] = useState("");
+  const [role, setRole] = useState<UserRole | undefined>();
   const [error, setError] = useState("");
-  const [practiceGoals, setPracticeGoals] = useState<string[]>([]);
-  const [needsDescription, setNeedsDescription] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const question = steps[step]!;
 
   useEffect(() => {
     if (!active) return;
-    if (steps[step]?.key === "needs") headingRef.current?.focus({ preventScroll: true });
+    if (steps[step]?.key === "role") headingRef.current?.focus({ preventScroll: true });
     else inputRef.current?.focus({ preventScroll: true });
   }, [active, step]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (question.key === "name" && !answers.name.trim()) {
+    if (question.key === "name" && !name.trim()) {
       setError("Please enter the name you’d like us to use.");
       inputRef.current?.focus();
       return;
     }
-    if (question.key === "age" && answers.age.trim()) {
-      const age = Number(answers.age);
-      if (!Number.isInteger(age) || age < 1 || age > 120) {
-        setError("Please enter a whole number from 1 to 120, or leave this blank.");
-        inputRef.current?.focus();
-        return;
-      }
+    if (question.key === "role" && !role) {
+      setError("Please choose the role that best suits you.");
+      headingRef.current?.focus();
+      return;
     }
     setError("");
     if (step < steps.length - 1) {
@@ -53,12 +46,8 @@ export function ProfileSetup({ active, onComplete }: Props) {
       return;
     }
     onComplete({
-      childName: answers.name.trim(),
-      age: answers.age.trim() ? Number(answers.age) : undefined,
-      interests: answers.interests.split(",").map((interest) => interest.trim()).filter(Boolean),
-      targetPhoneme: answers.target.trim() || undefined,
-      practiceGoals: practiceGoals.length ? practiceGoals : undefined,
-      needsDescription: needsDescription.trim() || undefined,
+      childName: name.trim(),
+      userRole: role,
     });
   }
 
@@ -73,17 +62,16 @@ export function ProfileSetup({ active, onComplete }: Props) {
 
       <div className="profile-setup__main">
         <div className="profile-setup__question" key={question.key}>
-          <p className="profile-setup__step"><span aria-hidden="true" />{question.key === "needs" ? "A little understanding goes a long way" : "Let’s get to know you"}</p>
+          <p className="profile-setup__step"><span aria-hidden="true" />{question.key === "role" ? "One last thing" : "Let’s get to know you"}</p>
           <h2 id="setup-title" ref={headingRef} tabIndex={-1}>
-            {step === 0 ? <>What’s your<br /><em>name?</em></> : question.key === "needs" ? <>What best<br /><em>describes you?</em></> : question.title}
+            {step === 0 ? <>What’s your<br /><em>name?</em></> : <>What role<br /><em>best suits you?</em></>}
           </h2>
           <p className="profile-setup__hint" id="setup-hint">{question.hint}</p>
-          {question.key === "needs" ? (
-            <NeedsQuestion
-              goals={practiceGoals}
-              description={needsDescription}
-              onGoalsChange={setPracticeGoals}
-              onDescriptionChange={setNeedsDescription}
+          {question.key === "role" ? (
+            <RoleQuestion
+              value={role}
+              invalid={Boolean(error)}
+              onChange={(value) => { setRole(value); setError(""); }}
             />
           ) : (<>
           <label className="visually-hidden" htmlFor="setup-answer">{question.label}</label>
@@ -92,22 +80,21 @@ export function ProfileSetup({ active, onComplete }: Props) {
             id="setup-answer"
             name={question.key}
             className="profile-setup__input"
-            value={answers[question.key]}
+            value={name}
             onChange={(event) => {
-              setAnswers((current) => ({ ...current, [question.key]: event.target.value }));
+              setName(event.target.value);
               setError("");
             }}
             placeholder={question.placeholder}
-            autoComplete={question.key === "name" ? "given-name" : "off"}
-            inputMode={question.key === "age" ? "numeric" : "text"}
-            maxLength={question.key === "interests" ? 256 : 64}
-            required={question.key === "name"}
+            autoComplete="given-name"
+            maxLength={64}
+            required
             aria-invalid={Boolean(error)}
             aria-describedby={error ? "setup-hint setup-error" : "setup-hint"}
           />
           </>)}
           <p className="profile-setup__error" id="setup-error" role="alert">{error}</p>
-          <p className="profile-setup__reassurance">{question.key === "needs" ? "There’s no right answer. We’ll find your pace together." : "No rush. We’re here to listen."}</p>
+          {question.key === "name" && <p className="profile-setup__reassurance">No rush. We’re here to listen.</p>}
         </div>
       </div>
 
@@ -140,7 +127,7 @@ export function ProfileSetup({ active, onComplete }: Props) {
             >Back</button>
           )}
           <button type="submit" className="profile-setup__continue">
-            {step === steps.length - 1 ? "Finish setup" : "Continue"}
+            Continue
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true">
               <path d="M4 12h15m-6-6 6 6-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>

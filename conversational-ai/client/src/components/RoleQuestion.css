@@ -1,0 +1,204 @@
+.profile-setup[data-step="role"] .profile-setup__question {
+  width: min(100%, 51rem);
+}
+
+.profile-setup[data-step="role"] .profile-setup__main { padding-block: 1.5rem; }
+.profile-setup[data-step="role"] h2 { font-size: clamp(3rem, 4.7vw, 4.6rem); }
+.profile-setup[data-step="role"] .profile-setup__step { margin-bottom: 1rem; }
+.profile-setup[data-step="role"] .profile-setup__hint { margin: 1.25rem auto 1.5rem; }
+.profile-setup[data-step="role"] .profile-setup__error:empty { min-height: 0; margin: 0; }
+
+.role-pond {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.6rem 0.8rem;
+  min-width: 0;
+  margin: 0;
+  padding: 1.4rem 0.5rem 2rem;
+  border: 0;
+}
+
+.role-pond__water {
+  position: absolute;
+  z-index: -1;
+  inset: -0.5rem;
+  border-radius: 46%;
+  background:
+    repeating-radial-gradient(ellipse at 28% 50%, transparent 0 30px, rgb(172 210 221 / 28%) 32px 33px, transparent 35px 60px),
+    radial-gradient(ellipse, rgb(211 235 240 / 55%), transparent 73%);
+  background-size: 130% 150%, 100% 100%;
+  mask-image: radial-gradient(ellipse, #000 40%, transparent 73%);
+  pointer-events: none;
+  animation: role-water-drift 12s ease-in-out infinite alternate;
+}
+
+.role-pad {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--pad-width, 100%);
+  justify-self: var(--pad-align, center);
+  transform: translateY(var(--pad-offset, 0));
+  max-width: 100%;
+  min-width: 0;
+  min-height: calc(7rem * var(--pad-growth, 1));
+  aspect-ratio: 260 / var(--pad-depth, 140);
+  border-radius: 50%;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Reserved cells keep staggered targets apart. Only artwork rotates. */
+.role-pad:nth-of-type(1) { --pad-width: 100%; --pad-growth: 1.28; --pad-depth: 179; --pad-offset: 0.65rem; --pad-angle: -5deg; --pad-align: start; }
+.role-pad:nth-of-type(2) { --pad-width: 100%; --pad-offset: -0.8rem; --pad-angle: 3deg; }
+.role-pad:nth-of-type(3) { --pad-width: 100%; --pad-growth: 1.12; --pad-depth: 157; --pad-offset: 1.15rem; --pad-angle: -3deg; --pad-align: end; }
+.role-pad:nth-of-type(4) { --pad-width: 93%; --pad-offset: 0.35rem; --pad-angle: 4deg; --pad-align: end; }
+.role-pad:nth-of-type(5) { --pad-width: 100%; --pad-growth: 1.4; --pad-depth: 196; --pad-offset: 1.2rem; --pad-angle: -4deg; --pad-align: start; }
+.role-pad:nth-of-type(6) { --pad-width: 100%; --pad-growth: 1.2; --pad-depth: 168; --pad-offset: 0; --pad-angle: 2deg; }
+
+.role-pad input {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.role-pad__leaf {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform: rotate(var(--pad-angle, 0deg));
+  filter: drop-shadow(0 7px 5px rgb(53 91 80 / 22%));
+  pointer-events: none;
+}
+
+.role-pad__shape {
+  fill: #e2edda;
+  stroke: #92b19a;
+  stroke-width: 1.4px;
+  transition: fill 160ms ease, stroke 160ms ease;
+}
+
+.role-pad:nth-of-type(2n) .role-pad__shape { fill: #dcebdc; }
+.role-pad:nth-of-type(3n) .role-pad__shape { fill: #e7eedb; }
+.role-pad__veins { fill: none; stroke: #b0c5aa; stroke-width: 1px; }
+.role-pad:hover .role-pad__shape { fill: #d4e7cd; stroke: #60896e; }
+.role-pad:has(input:checked) .role-pad__shape { fill: #c8dec2; stroke: #426d53; stroke-width: 2.3px; }
+.role-pad:has(input:focus-visible) { outline: 2px solid #426959; outline-offset: 4px; }
+
+.role-pad__label {
+  position: relative;
+  max-width: 84%;
+  margin-top: 0.5rem;
+  color: #567969;
+  font-style: italic;
+  text-shadow: 0 1px 1px rgb(24 51 35 / 18%), 0 2px 3px rgb(24 51 35 / 12%);
+  font-size: clamp(0.875rem, 1.15vw, 1rem);
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: center;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+.role-pad__selected {
+  position: absolute;
+  top: 20%;
+  right: 17%;
+  display: grid;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: #426d53;
+  color: #fff;
+  font-size: 0.6875rem;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.role-pad:has(input:checked) .role-pad__selected { opacity: 1; }
+
+.role-pad__ripples {
+  position: absolute;
+  inset: 12% 6%;
+  pointer-events: none;
+}
+
+.role-pad__ripples > span {
+  position: absolute;
+  inset: 0;
+  border: 2px solid #8fbecb;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 50%);
+  opacity: 0;
+  animation: role-pad-ripple 1600ms ease-out both;
+}
+
+.role-pad__ripples > span:nth-child(2) { animation-delay: 180ms; border-color: #c4dfe4; }
+.role-pad__ripples > span:nth-child(3) { animation-delay: 360ms; border-color: #a9cbd5; }
+
+.session-profile {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin: 0 0 1rem;
+}
+
+.session-profile span { color: var(--muted); }
+
+@keyframes role-water-drift {
+  from { background-position: 0 25%, center; }
+  to { background-position: 50% 65%, center; }
+}
+
+@keyframes role-pad-ripple {
+  0% { opacity: 0; transform: scale(0.9); }
+  15% { opacity: 0.7; }
+  100% { opacity: 0; transform: scale(1.55); }
+}
+
+@media (max-width: 600px) {
+  .profile-setup[data-step="role"] .profile-setup__main { padding-block: 1.75rem; }
+  .profile-setup[data-step="role"] h2 { font-size: clamp(2.6rem, 10vw, 3.6rem); }
+  .role-pond { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 0.65rem; padding: 0.8rem 0 1.2rem; }
+  .role-pad { min-height: calc(6.8rem * var(--pad-growth, 1)); }
+  .role-pad:nth-of-type(odd) { --pad-offset: -0.3rem; --pad-align: start; }
+  .role-pad:nth-of-type(even) { --pad-offset: 0.65rem; --pad-align: end; }
+  .role-pad__label { font-size: 0.875rem; }
+  .role-pad__selected { top: 23%; right: 13%; }
+  .role-pad__ripples > span { animation-name: role-pad-ripple-small; }
+}
+
+@keyframes role-pad-ripple-small {
+  0% { opacity: 0; transform: scale(0.9); }
+  15% { opacity: 0.7; }
+  100% { opacity: 0; transform: scale(1.28); }
+}
+
+@media (max-width: 360px) {
+  .role-pond { grid-template-columns: 1fr; max-width: 16rem; margin-inline: auto; }
+  .role-pad:nth-of-type(n) { min-height: calc(7rem * var(--pad-growth, 1)); --pad-offset: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .role-pond__water { animation: none; }
+  .role-pad__ripples > span { animation: role-pad-ripple-soft 350ms ease-out both; }
+}
+
+@keyframes role-pad-ripple-soft {
+  from { opacity: 0.7; }
+  to { opacity: 0; }
+}

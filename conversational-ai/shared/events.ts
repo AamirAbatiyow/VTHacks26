@@ -3,9 +3,21 @@
  * Single source of truth — imported by both client and server.
  */
 
+export const USER_ROLES = [
+  "Language development",
+  "Student",
+  "Educator",
+  "Social member",
+  "Public speaker",
+  "Neurodegenerative support",
+] as const;
+
+export type UserRole = (typeof USER_ROLES)[number];
+
 /** Session configuration sent when starting a conversation. */
 export interface SessionConfig {
   childName?: string;
+  userRole?: UserRole;
   age?: number;
   interests?: string[];
   targetPhoneme?: string;

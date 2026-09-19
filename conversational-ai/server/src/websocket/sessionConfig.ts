@@ -1,4 +1,4 @@
-import type { SessionConfig } from "../../../shared/events.js";
+import { USER_ROLES, type SessionConfig, type UserRole } from "../../../shared/events.js";
 
 /** Validate browser-supplied profile data before connecting paid providers. */
 export function parseSessionConfig(value: unknown): SessionConfig {
@@ -41,8 +41,14 @@ export function parseSessionConfig(value: unknown): SessionConfig {
     throw new Error("Age must be a number.");
   }
 
+  const userRole = optionalText("userRole", 80);
+  if (userRole !== undefined && !USER_ROLES.some((role) => role === userRole)) {
+    throw new Error("Choose a supported role.");
+  }
+
   return {
     childName: optionalText("childName"),
+    userRole: userRole as UserRole | undefined,
     age: config.age as number | undefined,
     interests: optionalList("interests"),
     targetPhoneme: optionalText("targetPhoneme"),
