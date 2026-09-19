@@ -1,4 +1,5 @@
 import type { SpeechAnalysisMetadata } from "../../../shared/events.js";
+import type { StutteringAssessment } from "./StutteringAssessment.js";
 
 /**
  * Future phoneme / articulation analysis plug-in point.
@@ -9,9 +10,13 @@ export interface SpeechAnalysisResult {
   targetPhoneme?: string;
   observations: unknown[];
   confidence?: number;
+  /** Omit until an identification loop has actually classified the audio. */
+  stuttering?: StutteringAssessment;
 }
 
 export interface AnalyzeInput {
+  sessionId?: string;
+  utteranceId?: string;
   /** Raw PCM16 LE mono microphone audio for the utterance. */
   pcm16: Buffer;
   sampleRate: number;

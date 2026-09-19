@@ -6,7 +6,7 @@ Real-time, interruptible conversational voice pipeline for a multimodal speech-c
 Browser mic (PCM16 16 kHz)
         │
         ▼
- Node WebSocket server  ──fan-out──► (future SpeechAnalyzer)
+ Node WebSocket server  ──fan-out──► StutterClassifier (ONNX, SEP-28k)
         │
         ▼
    ElevenLabs Scribe v2 (streaming STT)
@@ -25,6 +25,7 @@ Browser mic (PCM16 16 kHz)
 
 - **True streaming** at every hop (no full-utterance upload, no wait-for-full-LLM)
 - **Barge-in / interruption** with generation IDs (late audio dropped)
+- **Stutter event detection** on the raw mic audio, off the response critical path
 - **Conversation history** with optional `speechAnalysis` metadata hook
 - **Latency instrumentation** (STT / Gemini / TTS / total — measured, not fabricated)
 - **API keys stay server-side**
@@ -33,7 +34,7 @@ Browser mic (PCM16 16 kHz)
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 24+ (built-in SQLite for local analytics)
 - API keys: Google Gemini, ElevenLabs (+ a voice ID; Scribe + TTS share one key)
 
 ### Install
@@ -74,6 +75,159 @@ npm run dev:client
 Open http://localhost:5173
 
 Vite proxies `/ws` → `ws://localhost:3001/ws`.
+
+## Analytics: local SQLite, optional Tiger Data PostgreSQL
+
+The server records session IDs, the profile name, conversation date and duration,
+utterance word/character counts and audio duration, assistant responses by count,
+interruptions, provider status, error codes, and measured STT/Gemini/TTS latency.
+It does not persist ages, interests, transcripts, audio, waveforms, or
+free-form provider/error messages. There is no cross-session user identifier.
+
+### Local file (default)
+
+Analytics is saved to `conversational-ai/data/analytics.sqlite`. This file is
+intentionally **not gitignored**. No database account or credentials are needed.
+The server initializes the schema automatically; to create the file or inspect
+the report without starting the voice app, run from `conversational-ai/`:
+
+```bash
+npm run db:migrate
+npm run analytics:report
+```
+
+Leave `DATABASE_URL` unset to use SQLite. Optionally set `ANALYTICS_DB_PATH` in
+`server/.env` to another file path (relative to `conversational-ai/`, or absolute).
+The local database contains `events`, `sessions`, `turns`, and `hourly_latency`.
+It also includes `conversations` and `stuttering_utterances` for identification results.
+It uses SQLite's rollback journal, leaving one database file after clean writes.
+Small transactions run once per second; local SQLite writes are synchronous and
+may briefly occupy the server event loop. The local report includes average
+latencies; the PostgreSQL hourly view additionally computes p95 latency.
+
+### Optional: create and connect Tiger Data later
+
+Setting `DATABASE_URL` switches new writes to PostgreSQL; it does not copy existing
+SQLite history. The local file remains available for inspection.
+
+1. Sign in to [Tiger Cloud](https://console.cloud.tigerdata.com/) and create a
+   PostgreSQL service with TimescaleDB enabled. Choose a region near your server.
+2. Save the service credentials and copy its PostgreSQL connection URI.
+3. Copy `server/.env.example` to `server/.env` if it does not exist, then set the
+   existing AI keys and `DATABASE_URL`:
+
+   ```dotenv
+   DATABASE_URL=postgres://USER:PASSWORD@HOST:PORT/tsdb?sslmode=verify-full
+   ```
+
+   Use the actual host, port, database, and credentials from Tiger Cloud. URL-encode
+   special characters in passwords. TLS defaults to certificate verification for
+   remote hosts; localhost defaults to no TLS. Keep this URL server-side.
+4. From `conversational-ai/`, initialize the schema and hypertable:
+
+   ```bash
+   npm run db:migrate -- --timescale
+   npm run dev
+   ```
+
+   This creates `analytics.events` and its reporting views. The migration is
+   transactional and repeatable. The TimescaleDB option requires the extension
+   to be available and an account allowed to create/enable it. Plain PostgreSQL
+   development databases can use `npm run db:migrate` without `--timescale`.
+5. Complete a voice session and run:
+
+   ```bash
+   npm run analytics:report
+   ```
+
+   The report shows the last seven days of hourly latency and session totals.
+   You can also query the views in Tiger Cloud's SQL editor:
+
+   ```sql
+   SELECT * FROM analytics.sessions ORDER BY connected_at DESC LIMIT 50;
+   SELECT * FROM analytics.turns ORDER BY occurred_at DESC LIMIT 50;
+   SELECT * FROM analytics.hourly_latency ORDER BY hour DESC LIMIT 168;
+   ```
+
+`analytics.turns` selects the latest metrics snapshot per assistant generation,
+so repeated metric updates do not inflate turn counts. Missing measurements stay
+NULL. Latency is server-measured; browser playback delay is not sent to the server
+and is not included. Session duration covers connection to cleanup; started_at
+separately identifies successfully initialized voice sessions. User utterances
+count finalized transcription events, including any provider duplicates.
+
+Writes are batched every second
+with a maximum queue of 1,000 events. Failed batches retain their IDs and retry
+without duplicate inserts; overflow drops new events. `/health` includes queue,
+drop, failure, and last-write status. Voice callbacks enqueue analytics without
+awaiting writes; PostgreSQL writes are asynchronous.
+This is best-effort telemetry: process crashes or a sustained outage can lose
+queued events. Graceful shutdown attempts to flush within the server's 12-second
+shutdown window. Events are retained until explicitly deleted; no automatic
+retention policy or public analytics API is enabled.
+
+Run the isolated analytics tests with `npm run test:analytics`.
+
+### Conversation and stuttering analytics
+
+`npm run analytics:report` includes one row per conversation for the last seven
+days. Query all local records with `SELECT * FROM conversations`. In Tiger Data,
+use `analytics.conversations` after running `npm run db:migrate`.
+
+Each row includes the profile `name`, UTC `conversation_date`, `started_at`,
+`ended_at`, and `conversation_length_ms` (successful voice initialization to session
+cleanup, including pauses and assistant speech). Length stays NULL while active;
+old sessions without this measurement also stay NULL. Names are stored as entered
+in profile setup, so historical unnamed sessions remain NULL.
+
+| Report column | Identification-loop classification |
+|---|---|
+| `prolongation_count` | Elongated syllables, such as M[mmm]ommy |
+| `block_count` | Identified gasps or stuttered pauses |
+| `sound_repetition_count` | Repeated sounds/syllables, such as [pr-pr-pr-]prepared |
+| `word_repetition_count` | Repeated words or phrases, such as made [made] |
+| `no_stuttered_words_count` | Number of analyzed utterances explicitly confirmed to have none of the five event types |
+| `interjection_count` | Identified fillers, including um, uh, or person-specific fillers |
+
+The classifier decides occurrence boundaries (for example, a repeated-sound run
+is one event rather than one event per repeated syllable). Interjections are
+classified by the loop, including person-specific context; analytics does not
+assume every filler or pause is a stutter.
+
+The occurrence-counting loop is **not implemented yet**. The audio classifier
+provides window-level predictions; these are not treated as occurrence counts.
+`NoOpSpeechAnalyzer` omits
+classification, and reports show `analysis_status = 'not_analyzed'` with NULL
+counts. `partial` means only some utterances have results; totals then describe
+only those utterances. `complete` means all currently recorded utterances have
+results, not that the conversation has ended. `analyzed_utterances` and
+`user_utterances` expose coverage.
+
+Implement `SpeechAnalyzer.analyze()` and return `stuttering` along with its
+existing fields. The input contains original PCM audio, `sessionId`, and a stable
+`utteranceId`. Inject that analyzer as the sixth `VoiceSession` constructor
+argument. Its returned assessment is automatically recorded. An independent
+identification loop can instead call the same tracker directly:
+
+```ts
+analytics.trackStutteringAssessment(sessionId, utteranceId, {
+  revision: 1,
+  prolongation: 1,
+  block: 0,
+  soundRepetition: 2,
+  wordRepetition: 0,
+  interjection: 1,
+  noStutteredWords: false,
+});
+```
+
+Submit a **full cumulative snapshot for one utterance**, not increments. Increase
+`revision` when correcting its counts. Reports use the highest revision per
+session/utterance, so retries and late older results do not double-count. Only
+assessments linked to a recorded user utterance are included. Use nonnegative
+integer counts; set `noStutteredWords: true` only when all five counts are zero.
+Pending, failed, or uncertain classifications should omit the assessment.
+The database file remains tracked by Git as requested.
 
 ## Audio format
 
@@ -141,14 +295,32 @@ original microphone PCM (not from the transcript text). The server downsamples
 the utterance to ~240 peak-signed samples in `[-1, 1]` and the UI draws it under
 the USER line.
 
-## Future SpeechAnalyzer integration
+## Stutter event detection
 
 ```
-Browser microphone ──┬── ElevenLabs Scribe STT
-                     └── SpeechAnalyzer.analyze(pcm16) → metadata → Gemini
+Browser microphone ──┬── ElevenLabs Scribe STT  → transcript
+                     └── StutterClassifier(pcm16) → stutter_analysis event
 ```
 
-Do **not** use Scribe transcripts as the pronunciation-analysis source. Original mic PCM is buffered per session and passed to:
+A multi-label CNN trained on [SEP-28k](https://github.com/apple/ml-stuttering-events-dataset)
+scores each finished user turn for `Prolongation`, `Block`, `SoundRep`,
+`WordRep`, `Interjection`, and `Fluent`. Training and export live in
+[`ml/stutter`](../ml/stutter/README.md).
+
+Key properties:
+
+- Runs on the **original microphone PCM**, never on the Scribe transcript.
+- Slides 3-second windows with a 1.5-second hop; windows below an RMS gate are
+  skipped so silence cannot produce false positives.
+- Runs **concurrently with the Gemini response**, so it adds nothing to spoken
+  reply latency (typically 10–40 ms per turn regardless).
+- Labels are independent sigmoids, not a softmax — a turn can be both a block
+  and a sound repetition.
+- If `server/models/stutter.onnx` is absent the classifier disables itself and
+  the voice pipeline is unaffected. Override the location with
+  `STUTTER_MODEL_PATH`.
+
+The generic hook is still there for phoneme/articulation work:
 
 ```ts
 interface SpeechAnalyzer {
@@ -156,7 +328,8 @@ interface SpeechAnalyzer {
 }
 ```
 
-MVP ships `NoOpSpeechAnalyzer`. User turns already accept optional `speechAnalysis?: { targetPhoneme?; observations? }`.
+`StutterClassifier` implements it, so detected events can be fed into
+`speechAnalysis?: { targetPhoneme?; observations? }` on a user turn.
 
 ## Project layout
 
@@ -168,7 +341,8 @@ conversational-ai/
     websocket/session.ts
     services/{scribe,gemini,elevenlabs}.ts
     conversation/{ConversationManager,TextChunker,TurnTimeline,prompt}.ts
-    analysis/SpeechAnalyzer.ts
+    analysis/{SpeechAnalyzer,StutterClassifier,UtteranceCapture,signal1d}.ts
+    models/stutter.onnx        # trained artifact (see ml/stutter)
   client/src/
     hooks/useVoiceSession.ts
     audio/{recorder,player,vad,pcm-worklet}.ts

@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { performance } from "node:perf_hooks";
+import type { AnalyticsTracker } from "../analytics/AnalyticsTracker.js";
 import type WebSocket from "ws";
 import {
   AUDIO_SAMPLE_RATE_IN,
@@ -23,6 +25,7 @@ import {
 } from "../analysis/SpeechAnalyzer.js";
 import { UtteranceCapture } from "../analysis/UtteranceCapture.js";
 import { pcm16ToSignal1d } from "../analysis/signal1d.js";
+import type { StutterClassifier } from "../analysis/StutterClassifier.js";
 
 /**
  * Fan-out microphone audio bus.
@@ -65,20 +68,35 @@ export class VoiceSession {
   private conversation: ConversationManager | null = null;
   private readonly micBus = new MicrophoneAudioBus();
   private readonly audioClock = new AudioClock(AUDIO_SAMPLE_RATE_IN);
-  private readonly speechAnalyzer: SpeechAnalyzer = new NoOpSpeechAnalyzer();
+  private readonly speechAnalyzer: SpeechAnalyzer;
+  private readonly stutter: StutterClassifier | null;
+
   private readonly utterance = new UtteranceCapture();
   private sessionConfig: SessionConfig = {};
   private started = false;
   private closed = false;
+  private readonly connectedAt = performance.now();
+  private conversationStartedAt: number | null = null;
 
-  constructor(ws: WebSocket, config: AppConfig, gemini: GeminiClient) {
+  constructor(
+    ws: WebSocket,
+    config: AppConfig,
+    gemini: GeminiClient,
+    stutter?: StutterClassifier,
+    private readonly analytics?: AnalyticsTracker,
+    analyzer?: SpeechAnalyzer,
+  ) {
+
     this.sessionId = randomUUID();
     this.ws = ws;
     this.config = config;
     this.gemini = gemini;
+    this.stutter = analyzer ? null : stutter ?? null;
+    this.speechAnalyzer = analyzer ?? stutter ?? new NoOpSpeechAnalyzer();
   }
 
   attach(): void {
+    this.analytics?.track(this.sessionId, { type: "session_connected", properties: {} });
     this.ws.on("message", (data, isBinary) => {
       void this.onMessage(data, isBinary);
     });
@@ -98,6 +116,7 @@ export class VoiceSession {
   }
 
   private send(event: ServerJsonEvent): void {
+    this.analytics?.trackServerEvent(this.sessionId, event);
     if (this.ws.readyState !== this.ws.OPEN) return;
     try {
       this.ws.send(JSON.stringify(event));
@@ -223,6 +242,9 @@ export class VoiceSession {
       return;
     }
     this.sessionConfig = config;
+    this.analytics?.track(this.sessionId, { type: "conversation_profile", properties: {
+      name: typeof config.childName === "string" ? config.childName.trim() || null : null,
+    } });
     this.started = true;
     this.audioClock.start();
 
@@ -388,6 +410,7 @@ export class VoiceSession {
       detail: this.gemini.getModel(),
     });
 
+    this.conversationStartedAt = performance.now();
     this.send({
       type: "session_started",
       sessionId: this.sessionId,
@@ -429,40 +452,73 @@ export class VoiceSession {
     // Original mic PCM for this utterance — not the transcript.
     const micSnapshot = this.utterance.take();
     const signal = pcm16ToSignal1d(micSnapshot, AUDIO_SAMPLE_RATE_IN);
-    const turnId = `turn-${Date.now()}`;
+    const turnId = randomUUID();
     this.send({ type: "transcript_final", text, turnId, signal });
     logger.info(
       "AUDIO",
       `utterance signal: ${signal.samples.length} pts, ${signal.durationMs}ms`,
     );
 
-    let speechAnalysis;
+    // Stutter detection runs alongside the response rather than in front of it:
+    // blocking here would add its inference time to every turn's latency.
+    void this.runSpeechAnalysis(micSnapshot, text, turnId);
+
+    await this.conversation.handleUserTurn(text, { t0PerfMs: t0 });
+  }
+
+  /** Classify the utterance audio and push results to the UI when ready. */
+  private async runSpeechAnalysis(
+    micSnapshot: Buffer,
+    text: string,
+    turnId: string,
+  ): Promise<void> {
     try {
+      const analysis = await this.stutter?.classify(
+        micSnapshot,
+        AUDIO_SAMPLE_RATE_IN,
+      );
+      if (analysis && !this.closed) {
+        const hits = analysis.events
+          .filter((e) => e.detected && e.label !== "Fluent")
+          .map((e) => `${e.label} ${e.probability.toFixed(2)}`);
+        logger.info(
+          "ANALYSIS",
+          `stutter: ${hits.length ? hits.join(", ") : "none"} ` +
+            `(fluency ${analysis.fluency.toFixed(2)}, ${analysis.windows.length} win, ` +
+            `${analysis.inferenceMs}ms)`,
+        );
+        this.send({ type: "stutter_analysis", turnId, analysis });
+        return;
+      }
+
+      // Model unavailable — fall back to whatever analyzer is configured.
       const result = await this.speechAnalyzer.analyze({
+        sessionId: this.sessionId,
+        utteranceId: turnId,
+
         pcm16: micSnapshot,
         sampleRate: AUDIO_SAMPLE_RATE_IN,
         transcript: text,
         targetPhoneme: this.sessionConfig.targetPhoneme,
       });
-      if (result.observations.length > 0 || result.targetPhoneme) {
-        speechAnalysis = {
-          targetPhoneme: result.targetPhoneme,
-          observations: result.observations,
-        };
+      if (result.stuttering) {
+        this.analytics?.trackStutteringAssessment(this.sessionId, turnId, result.stuttering);
       }
+
     } catch (err) {
-      logger.warn("SESSION", "SpeechAnalyzer failed", String(err));
+      logger.warn("SESSION", "speech analysis failed", String(err));
     }
 
-    await this.conversation.handleUserTurn(text, {
-      speechAnalysis,
-      t0PerfMs: t0,
-    });
   }
 
   async cleanup(reason: string): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    this.analytics?.track(this.sessionId, { type: "session_ended", properties: {
+      reason, durationMs: Math.round(performance.now() - this.connectedAt),
+      conversationDurationMs: this.conversationStartedAt == null ? null
+        : Math.round(performance.now() - this.conversationStartedAt),
+    } });
     logger.info("SESSION", `cleanup: ${reason}`);
 
     const genId = this.conversation?.getActiveGenerationId();
