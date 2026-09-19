@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { SessionConfig } from "@shared/events";
 
 interface Props {
+  initialConfig?: SessionConfig | null;
   sessionActive: boolean;
   canInterrupt: boolean;
   onStart: (config: SessionConfig) => void;
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export function Controls({
+  initialConfig,
   sessionActive,
   canInterrupt,
   onStart,
@@ -20,6 +22,14 @@ export function Controls({
   const [age, setAge] = useState("9");
   const [interests, setInterests] = useState("Minecraft, dinosaurs");
   const [targetPhoneme, setTargetPhoneme] = useState("/r/");
+
+  useEffect(() => {
+    if (!initialConfig) return;
+    setChildName(initialConfig.childName ?? "");
+    setAge(initialConfig.age == null ? "" : String(initialConfig.age));
+    setInterests(initialConfig.interests?.join(", ") ?? "");
+    setTargetPhoneme(initialConfig.targetPhoneme ?? "");
+  }, [initialConfig]);
 
   return (
     <div className="controls">

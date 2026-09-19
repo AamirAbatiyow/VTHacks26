@@ -3,16 +3,17 @@ import { Transcript } from "./Transcript";
 import { Controls } from "./Controls";
 import { StatusBar } from "./StatusBar";
 import { LatencyPanel } from "./LatencyPanel";
+import type { SessionConfig } from "@shared/events";
 
-export function Conversation() {
+export function Conversation({ initialConfig }: { initialConfig?: SessionConfig | null }) {
   const session = useVoiceSession();
 
   return (
-    <div className="app">
+    <div className="app" id="conversation" tabIndex={-1}>
       <header>
-        <h1>Conversational Voice AI</h1>
+        <h2 id="practice-title">Speech practice</h2>
         <p className="subtitle">
-          Mic → Scribe → Gemini → ElevenLabs · true streaming · barge-in
+          A space to practice, one conversation at a time.
         </p>
       </header>
 
@@ -23,6 +24,7 @@ export function Conversation() {
       />
 
       <Controls
+        initialConfig={initialConfig}
         sessionActive={session.sessionActive}
         canInterrupt={Boolean(session.activeGenerationId)}
         onStart={(cfg) => void session.startConversation(cfg)}
