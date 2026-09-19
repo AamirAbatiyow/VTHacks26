@@ -34,7 +34,7 @@ Browser mic (PCM16 16 kHz)
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 24+ (built-in SQLite for local analytics)
 - API keys: Google Gemini, ElevenLabs (+ a voice ID; Scribe + TTS share one key)
 
 ### Install
@@ -75,6 +75,97 @@ npm run dev:client
 Open http://localhost:5173
 
 Vite proxies `/ws` → `ws://localhost:3001/ws`.
+
+## Analytics: local SQLite, optional Tiger Data PostgreSQL
+
+The server records anonymous session IDs, session start/end and duration,
+utterance word/character counts and audio duration, assistant responses by count,
+interruptions, provider status, error codes, and measured STT/Gemini/TTS latency.
+It does not persist names, ages, interests, transcripts, audio, waveforms, or
+free-form provider/error messages. There is no cross-session user identifier.
+
+### Local file (default)
+
+Analytics is saved to `conversational-ai/data/analytics.sqlite`. This file is
+intentionally **not gitignored**. No database account or credentials are needed.
+The server initializes the schema automatically; to create the file or inspect
+the report without starting the voice app, run from `conversational-ai/`:
+
+```bash
+npm run db:migrate
+npm run analytics:report
+```
+
+Leave `DATABASE_URL` unset to use SQLite. Optionally set `ANALYTICS_DB_PATH` in
+`server/.env` to another file path (relative to `conversational-ai/`, or absolute).
+The local database contains `events`, `sessions`, `turns`, and `hourly_latency`.
+It uses SQLite's rollback journal, leaving one database file after clean writes.
+Small transactions run once per second; local SQLite writes are synchronous and
+may briefly occupy the server event loop. The local report includes average
+latencies; the PostgreSQL hourly view additionally computes p95 latency.
+
+### Optional: create and connect Tiger Data later
+
+Setting `DATABASE_URL` switches new writes to PostgreSQL; it does not copy existing
+SQLite history. The local file remains available for inspection.
+
+1. Sign in to [Tiger Cloud](https://console.cloud.tigerdata.com/) and create a
+   PostgreSQL service with TimescaleDB enabled. Choose a region near your server.
+2. Save the service credentials and copy its PostgreSQL connection URI.
+3. Copy `server/.env.example` to `server/.env` if it does not exist, then set the
+   existing AI keys and `DATABASE_URL`:
+
+   ```dotenv
+   DATABASE_URL=postgres://USER:PASSWORD@HOST:PORT/tsdb?sslmode=verify-full
+   ```
+
+   Use the actual host, port, database, and credentials from Tiger Cloud. URL-encode
+   special characters in passwords. TLS defaults to certificate verification for
+   remote hosts; localhost defaults to no TLS. Keep this URL server-side.
+4. From `conversational-ai/`, initialize the schema and hypertable:
+
+   ```bash
+   npm run db:migrate -- --timescale
+   npm run dev
+   ```
+
+   This creates `analytics.events` and three SQL views. The migration is
+   transactional and repeatable. The TimescaleDB option requires the extension
+   to be available and an account allowed to create/enable it. Plain PostgreSQL
+   development databases can use `npm run db:migrate` without `--timescale`.
+5. Complete a voice session and run:
+
+   ```bash
+   npm run analytics:report
+   ```
+
+   The report shows the last seven days of hourly latency and session totals.
+   You can also query the views in Tiger Cloud's SQL editor:
+
+   ```sql
+   SELECT * FROM analytics.sessions ORDER BY connected_at DESC LIMIT 50;
+   SELECT * FROM analytics.turns ORDER BY occurred_at DESC LIMIT 50;
+   SELECT * FROM analytics.hourly_latency ORDER BY hour DESC LIMIT 168;
+   ```
+
+`analytics.turns` selects the latest metrics snapshot per assistant generation,
+so repeated metric updates do not inflate turn counts. Missing measurements stay
+NULL. Latency is server-measured; browser playback delay is not sent to the server
+and is not included. Session duration covers connection to cleanup; started_at
+separately identifies successfully initialized voice sessions. User utterances
+count finalized transcription events, including any provider duplicates.
+
+Writes are batched every second
+with a maximum queue of 1,000 events. Failed batches retain their IDs and retry
+without duplicate inserts; overflow drops new events. `/health` includes queue,
+drop, failure, and last-write status. Voice callbacks enqueue analytics without
+awaiting writes; PostgreSQL writes are asynchronous.
+This is best-effort telemetry: process crashes or a sustained outage can lose
+queued events. Graceful shutdown attempts to flush within the server's 12-second
+shutdown window. Events are retained until explicitly deleted; no automatic
+retention policy or public analytics API is enabled.
+
+Run the isolated analytics tests with `npm run test:analytics`.
 
 ## Audio format
 

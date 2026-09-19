@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { performance } from "node:perf_hooks";
+import type { AnalyticsTracker } from "../analytics/AnalyticsTracker.js";
 import type WebSocket from "ws";
 import {
   AUDIO_SAMPLE_RATE_IN,
@@ -71,12 +73,14 @@ export class VoiceSession {
   private sessionConfig: SessionConfig = {};
   private started = false;
   private closed = false;
+  private readonly connectedAt = performance.now();
 
   constructor(
     ws: WebSocket,
     config: AppConfig,
     gemini: GeminiClient,
     stutter?: StutterClassifier,
+    private readonly analytics?: AnalyticsTracker,
   ) {
     this.sessionId = randomUUID();
     this.ws = ws;
@@ -87,6 +91,7 @@ export class VoiceSession {
   }
 
   attach(): void {
+    this.analytics?.track(this.sessionId, { type: "session_connected", properties: {} });
     this.ws.on("message", (data, isBinary) => {
       void this.onMessage(data, isBinary);
     });
@@ -106,6 +111,7 @@ export class VoiceSession {
   }
 
   private send(event: ServerJsonEvent): void {
+    this.analytics?.trackServerEvent(this.sessionId, event);
     if (this.ws.readyState !== this.ws.OPEN) return;
     try {
       this.ws.send(JSON.stringify(event));
@@ -478,6 +484,9 @@ export class VoiceSession {
   async cleanup(reason: string): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    this.analytics?.track(this.sessionId, { type: "session_ended", properties: {
+      reason, durationMs: Math.round(performance.now() - this.connectedAt),
+    } });
     logger.info("SESSION", `cleanup: ${reason}`);
 
     const genId = this.conversation?.getActiveGenerationId();

@@ -17,6 +17,7 @@ function required(name: string): string {
 }
 
 export interface AppConfig {
+  databaseUrl?: string;
   port: number;
   geminiApiKey: string;
   elevenLabsApiKey: string;
@@ -30,6 +31,7 @@ export interface AppConfig {
 
 export function loadConfig(): AppConfig {
   return {
+    databaseUrl: process.env.DATABASE_URL?.trim() || undefined,
     port: Number(process.env.PORT ?? 3001),
     geminiApiKey: required("GEMINI_API_KEY"),
     elevenLabsApiKey: required("ELEVENLABS_API_KEY"),
