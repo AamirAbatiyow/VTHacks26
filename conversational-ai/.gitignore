@@ -8,3 +8,15 @@ build/
 coverage/
 *.tsbuildinfo
 .vite/
+
+# Large open-source model exports don't belong in git (GitHub blocks pushes
+# over 100MB without Git LFS; stutter_vocametrix.onnx runs ~1.2GB). The small
+# custom-trained models (CNN + two-head gate, ~5.7MB each) stay tracked as
+# usual; anything else in models/ is a regenerate-locally artifact — see
+# ml/stutter/export_onnx.py, export_onnx_twohead.py, export_onnx_vocametrix.py.
+server/models/*.onnx
+server/models/*.json
+!server/models/stutter.onnx
+!server/models/stutter.json
+!server/models/stutter_gate.onnx
+!server/models/stutter_gate.json

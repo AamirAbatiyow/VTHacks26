@@ -7,6 +7,7 @@ import { logger } from "./logger.js";
 import { GeminiClient } from "./services/gemini.js";
 import { VoiceSession } from "./websocket/session.js";
 import { StutterClassifier } from "./analysis/StutterClassifier.js";
+import { STUTTER_MODELS } from "./analysis/modelRegistry.js";
 import { AnalyticsTracker } from "./analytics/AnalyticsTracker.js";
 import { createAnalyticsPool, postgresAnalyticsDatabase } from "./analytics/database.js";
 import { LocalAnalyticsDatabase, localDatabasePath } from "./analytics/local.js";
@@ -34,8 +35,17 @@ async function main(): Promise<void> {
     config.geminiModelPreference,
   );
 
-  // One ONNX session shared by every connection — loading is lazy and cached.
-  const stutter = new StutterClassifier(config.stutterModelPath);
+  // One StutterClassifier per registered model, shared by every connection.
+  // Each lazily loads its own ONNX file (and, by filename convention, an
+  // optional "<name>_gate.onnx" two-head fluency gate) on first use, so
+  // unused variants cost nothing until selected.
+  const stutterModels = new Map(
+    STUTTER_MODELS.map((m) => [m.id, new StutterClassifier(m.modelPath)] as const),
+  );
+  logger.info(
+    "ANALYSIS",
+    `stutter models registered: ${STUTTER_MODELS.map((m) => m.id).join(", ")} (default=${config.defaultStutterModelId})`,
+  );
 
   const app = express();
   const analyticsPool = config.databaseUrl ? createAnalyticsPool(config.databaseUrl) : null;
@@ -45,6 +55,13 @@ async function main(): Promise<void> {
   logger.info("ANALYTICS", analyticsPool ? "PostgreSQL tracking enabled; run db:migrate to initialize." : `Local SQLite tracking: ${localDatabasePath()}`);
   const sessions = new Set<VoiceSession>();
   app.use(cors());
+  app.get("/stutter-models", (_req, res) => {
+    res.json({
+      models: STUTTER_MODELS.map(({ id, label }) => ({ id, label })),
+      defaultId: config.defaultStutterModelId,
+    });
+  });
+
   app.get("/health", (_req, res) => {
     res.json({
       ok: true,
@@ -59,7 +76,7 @@ async function main(): Promise<void> {
 
   wss.on("connection", (ws) => {
     try {
-      const session = new VoiceSession(ws, config, gemini, stutter, analytics);
+      const session = new VoiceSession(ws, config, gemini, stutterModels, analytics);
       sessions.add(session);
       ws.once("close", () => sessions.delete(session));
       session.attach();

@@ -34,6 +34,8 @@ export interface SessionConfig {
   age?: number;
   interests?: string[];
   targetPhoneme?: string;
+  /** Id from the GET /stutter-models list; defaults to the server's configured default if omitted. */
+  stutterModel?: string;
   /** Self-reported areas the user would like to practice. */
   practiceGoals?: string[];
   /** Optional context supplied during onboarding, up to 1,000 characters. */

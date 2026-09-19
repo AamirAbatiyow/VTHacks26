@@ -391,11 +391,43 @@ export class ConversationManager {
     role: "user" | "model";
     parts: Array<{ text: string }>;
   }> {
-    return this.history
-      .filter((t) => t.text.trim().length > 0)
-      .map((t) => ({
+    const turns = this.history.filter((t) => t.text.trim().length > 0);
+    const lastIndex = turns.length - 1;
+    return turns.map((t, i) => {
+      // Only the turn that just happened carries its speech-signal tag —
+      // not the whole history. historyToGeminiContents() rebuilds the full
+      // conversation from scratch every call (Gemini's API is stateless),
+      // so tagging every past turn would re-inject it into every future
+      // call too: clutter, wasted tokens, and a bias toward Gemini fixating
+      // on old detections instead of reacting to what's happening now.
+      const signal =
+        i === lastIndex && t.role === "user"
+          ? formatSpeechSignal(t.speechAnalysis)
+          : null;
+      return {
         role: t.role === "user" ? ("user" as const) : ("model" as const),
-        parts: [{ text: t.text }],
-      }));
+        parts: [{ text: signal ? `${t.text}\n\n${signal}` : t.text }],
+      };
+    });
   }
+}
+
+/**
+ * Renders detected stutter events as a compact, clearly-delimited tag
+ * appended to a user turn's text before it reaches Gemini — e.g.
+ * "[speech_signal: Block (0.71)]". See prompt.ts for how Gemini is told to
+ * interpret this tag; it is never shown in the UI transcript (that reads
+ * ConversationTurn.text directly, which this never mutates).
+ */
+function formatSpeechSignal(meta: SpeechAnalysisMetadata | undefined): string | null {
+  if (!meta?.observations?.length) return null;
+  const events = meta.observations.filter(
+    (o): o is { kind: "stutter_event"; label: string; probability: number } =>
+      typeof o === "object" &&
+      o !== null &&
+      (o as { kind?: unknown }).kind === "stutter_event",
+  );
+  if (events.length === 0) return null;
+  const parts = events.map((e) => `${e.label} (${e.probability.toFixed(2)})`);
+  return `[speech_signal: ${parts.join(", ")}]`;
 }

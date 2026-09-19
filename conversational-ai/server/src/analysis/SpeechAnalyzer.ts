@@ -1,4 +1,4 @@
-import type { SpeechAnalysisMetadata } from "../../../shared/events.js";
+import type { SpeechAnalysisMetadata, StutterAnalysis } from "../../../shared/events.js";
 import type { StutteringAssessment } from "./StutteringAssessment.js";
 
 /**
@@ -44,5 +44,31 @@ export function toMetadata(
   return {
     targetPhoneme: result.targetPhoneme,
     observations: result.observations,
+  };
+}
+
+/**
+ * Compacts a full per-window StutterAnalysis (from StutterClassifier.classify())
+ * into the generic SpeechAnalysisMetadata shape carried on a conversation turn,
+ * for feeding into ConversationManager.historyToGeminiContents(). Same
+ * "detected, non-Fluent" filter StutterClassifier.analyze() itself uses —
+ * kept as a standalone function (rather than reusing analyze()) so the
+ * caller can reuse an already-computed StutterAnalysis instead of running
+ * the model a second time.
+ */
+export function stutterAnalysisToMetadata(
+  analysis: StutterAnalysis,
+  targetPhoneme?: string,
+): SpeechAnalysisMetadata {
+  const detected = analysis.events.filter(
+    (e) => e.detected && e.label !== "Fluent",
+  );
+  return {
+    targetPhoneme,
+    observations: detected.map((e) => ({
+      kind: "stutter_event",
+      label: e.label,
+      probability: e.probability,
+    })),
   };
 }

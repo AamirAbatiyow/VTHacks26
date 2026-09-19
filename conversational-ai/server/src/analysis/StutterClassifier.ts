@@ -22,6 +22,10 @@ interface ModelMeta {
   thresholds: Record<string, number>;
 }
 
+interface GateMeta extends ModelMeta {
+  gateThreshold: number;
+}
+
 /** Below this RMS a window is treated as silence and skipped entirely. */
 const SILENCE_RMS = 0.003;
 /** Guard against pathologically long utterances producing huge batches. */
@@ -35,14 +39,26 @@ const DEFAULT_THRESHOLD = 0.5;
  * contains its own log-mel frontend, so all we hand it is float32 samples.
  * If the model file is absent the classifier stays disabled and the rest of the
  * pipeline is unaffected.
+ *
+ * Two models, each used where it benchmarks better (see ml/stutter/README.md):
+ * per-type scores come from the single-head model, while the overall fluency
+ * score comes from the two-head model's binary gate, which is significantly
+ * better at the "is this disfluent at all" call (AUC 0.815 vs 0.798, p=0.001).
+ * The gate is optional — without it fluency falls back to the single-head
+ * model's own Fluent output.
  */
 export class StutterClassifier implements SpeechAnalyzer {
   private session: ort.InferenceSession | null = null;
   private meta: ModelMeta | null = null;
+  private gateSession: ort.InferenceSession | null = null;
+  private gateMeta: GateMeta | null = null;
   private loading: Promise<void> | null = null;
   private failed = false;
 
-  constructor(private readonly modelPath: string) {}
+  constructor(
+    private readonly modelPath: string,
+    private readonly gatePath = modelPath.replace(/\.onnx$/, "_gate.onnx"),
+  ) {}
 
   get enabled(): boolean {
     return !this.failed;
@@ -76,10 +92,39 @@ export class StutterClassifier implements SpeechAnalyzer {
       } catch (err) {
         logger.warn("ANALYSIS", `failed to load stutter model: ${String(err)}`);
         this.failed = true;
+        return;
       }
+      await this.loadGate();
     })();
 
     return this.loading;
+  }
+
+  /** The gate is a bonus, not a requirement: any failure just leaves it off. */
+  private async loadGate(): Promise<void> {
+    const metaPath = this.gatePath.replace(/\.onnx$/, ".json");
+    if (!fs.existsSync(this.gatePath) || !fs.existsSync(metaPath)) {
+      logger.info(
+        "ANALYSIS",
+        "two-head gate not found — fluency falls back to the single-head Fluent output",
+      );
+      return;
+    }
+    try {
+      this.gateMeta = JSON.parse(fs.readFileSync(metaPath, "utf8")) as GateMeta;
+      this.gateSession = await ort.InferenceSession.create(this.gatePath, {
+        executionProviders: ["cpu"],
+        graphOptimizationLevel: "all",
+      });
+      logger.info(
+        "ANALYSIS",
+        `two-head gate loaded — fluency from binary head (threshold ${this.gateMeta.gateThreshold})`,
+      );
+    } catch (err) {
+      logger.warn("ANALYSIS", `failed to load stutter gate: ${String(err)}`);
+      this.gateSession = null;
+      this.gateMeta = null;
+    }
   }
 
   async classify(
@@ -111,10 +156,21 @@ export class StutterClassifier implements SpeechAnalyzer {
     const flat = new Float32Array(batch.length * clipSamples);
     batch.forEach((w, i) => flat.set(w, i * clipSamples));
 
+    // The gate only shares the batch if it was trained on the same geometry.
+    const useGate =
+      this.gateSession !== null &&
+      this.gateMeta !== null &&
+      this.gateMeta.clipSamples === clipSamples &&
+      this.gateMeta.sampleRate === this.meta.sampleRate;
+
+    const shape = [batch.length, clipSamples];
     const t0 = performance.now();
-    const output = await this.session.run({
-      waveform: new ort.Tensor("float32", flat, [batch.length, clipSamples]),
-    });
+    const [output, gateOutput] = await Promise.all([
+      this.session.run({ waveform: new ort.Tensor("float32", flat, shape) }),
+      useGate
+        ? this.gateSession!.run({ waveform: new ort.Tensor("float32", flat, shape) })
+        : Promise.resolve(null),
+    ]);
     const inferenceMs = performance.now() - t0;
 
     const logits = output.logits.data as Float32Array;
@@ -136,13 +192,9 @@ export class StutterClassifier implements SpeechAnalyzer {
       return { label, probability: round3(probability), detected: probability >= threshold };
     });
 
-    const fluentIdx = labels.indexOf("Fluent");
-    const fluency =
-      fluentIdx >= 0
-        ? round3(
-            windows.reduce((a, w) => a + w.scores[fluentIdx], 0) / windows.length,
-          )
-        : 0;
+    const fluency = gateOutput
+      ? gateFluency(gateOutput.gate.data as Float32Array)
+      : fluentFluency(windows, labels.indexOf("Fluent"));
 
     return {
       labels,
@@ -173,6 +225,20 @@ export class StutterClassifier implements SpeechAnalyzer {
       })),
     };
   }
+}
+
+/** Fluency from the two-head gate: the average window is not disfluent. */
+function gateFluency(gate: Float32Array): number {
+  let sum = 0;
+  for (let i = 0; i < gate.length; i++) sum += sigmoid(gate[i]);
+  return round3(1 - sum / gate.length);
+}
+
+/** Fallback when the gate is unavailable: the single-head Fluent output. */
+function fluentFluency(windows: StutterWindow[], fluentIdx: number): number {
+  if (fluentIdx < 0 || windows.length === 0) return 0;
+  const sum = windows.reduce((a, w) => a + w.scores[fluentIdx], 0);
+  return round3(sum / windows.length);
 }
 
 function pcm16ToFloat32(buf: Buffer): Float32Array {

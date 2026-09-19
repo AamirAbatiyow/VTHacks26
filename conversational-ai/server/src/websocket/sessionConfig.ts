@@ -66,5 +66,9 @@ export function parseSessionConfig(value: unknown): SessionConfig {
     targetPhoneme: optionalText("targetPhoneme"),
     practiceGoals: optionalList("practiceGoals", 6, 100),
     needsDescription: optionalText("needsDescription", 1000),
+    // Which registered stutter model (analysis/modelRegistry.ts) this session
+    // wants — without this the model dropdown's choice never reaches the
+    // server and every session silently uses the default model.
+    stutterModel: optionalText("stutterModel", 80),
   };
 }

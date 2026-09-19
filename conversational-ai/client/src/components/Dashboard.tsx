@@ -5,6 +5,8 @@ import { DashboardFlower } from "./DashboardFlower";
 import "./Dashboard.css";
 import { SpeechAnalytics } from "./SpeechAnalytics";
 
+interface StutterModelOption { id: string; label: string; }
+
 type Activity = { sessions: { date: string; minutes: number }[]; challenges: Record<string, number[]> };
 type Card = "challenges" | "achievements" | "progress" | "streak";
 const storageKey = "vocally-dashboard-activity-v1";
@@ -33,8 +35,26 @@ export function Dashboard({ profile, onPractice, onProfileChange }: { profile: S
   const [reportOpen, setReportOpen] = useState(false);
   const detail = useRef<HTMLDialogElement>(null);
   const profileDialog = useRef<HTMLDialogElement>(null);
+  const [stutterModels, setStutterModels] = useState<StutterModelOption[]>([]);
+  const [stutterModelDefault, setStutterModelDefault] = useState<string>("");
   const opener = useRef<HTMLButtonElement | null>(null);
   useEffect(() => { const timer = window.setInterval(() => setToday(dayKey()), 30000); return () => window.clearInterval(timer); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/stutter-models")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`status ${res.status}`))))
+      .then((data: { models?: StutterModelOption[]; defaultId?: string }) => {
+        if (cancelled) return;
+        const models = data.models ?? [];
+        setStutterModels(models);
+        setStutterModelDefault(data.defaultId ?? models[0]?.id ?? "");
+      })
+      .catch(() => {
+        // No model list available (e.g. server not reachable yet) — the profile
+        // dialog falls back to name-only editing until this succeeds.
+      });
+    return () => { cancelled = true; };
+  }, []);
   useEffect(() => { if (activeCard) detail.current?.showModal(); }, [activeCard]);
   function save(next: Activity) {
     setActivity(next);
@@ -74,6 +94,6 @@ export function Dashboard({ profile, onPractice, onProfileChange }: { profile: S
       {activeCard === "streak" && <>{heading("04 / YOUR STREAK", "Keep showing up as you.", "A practice session or one daily challenge is all it takes to make today part of your story.")}<div className="detail-grid"><section className="panel"><div className="big-number">{streak}<small> days in a row</small></div>{weekView(true)}<p>{dates.has(today) ? "Today is already part of your story." : "Complete a challenge or record your practice to include today."}</p></section><aside className="panel"><h3>A rhythm, not a race.</h3><p>Miss a day? You can always begin again. Your practice history and the work you’ve put in are still here.</p><button className="primary" onClick={() => setActiveCard("challenges")}>Find a little challenge ↗</button></aside></div></>}
       <p role="status" className="note">{notice}</p>
     </div></dialog>
-    <dialog ref={profileDialog} className="profile-dialog" aria-labelledby="profile-title"><form onSubmit={e => { e.preventDefault(); const name = String(new FormData(e.currentTarget).get("name") ?? "").trim(); if (!name) return; onProfileChange({ ...profile, childName: name }); profileDialog.current?.close(); }}><h2 id="profile-title">Make this space yours.</h2><label>Your first name<input key={profile.childName} name="name" defaultValue={profile.childName} maxLength={64} pattern=".*\S.*" required autoComplete="given-name" /></label><div className="form-actions"><button type="button" onClick={() => profileDialog.current?.close()}>Cancel</button><button type="submit" className="primary">Save profile ↗</button></div></form></dialog>
+    <dialog ref={profileDialog} className="profile-dialog" aria-labelledby="profile-title"><form onSubmit={e => { e.preventDefault(); const data = new FormData(e.currentTarget); const name = String(data.get("name") ?? "").trim(); if (!name) return; const selectedModel = String(data.get("stutterModel") ?? "").trim(); onProfileChange({ ...profile, childName: name, stutterModel: selectedModel || profile.stutterModel }); profileDialog.current?.close(); }}><h2 id="profile-title">Make this space yours.</h2><label>Your first name<input key={profile.childName} name="name" defaultValue={profile.childName} maxLength={64} pattern=".*\S.*" required autoComplete="given-name" /></label>{stutterModels.length > 0 && <label>Detection model<select key={profile.stutterModel ?? stutterModelDefault} name="stutterModel" defaultValue={profile.stutterModel || stutterModelDefault}>{stutterModels.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}</select></label>}<p className="note">Applies the next time you start a practice session — it won’t change a conversation already in progress.</p><div className="form-actions"><button type="button" onClick={() => profileDialog.current?.close()}>Cancel</button><button type="submit" className="primary">Save profile ↗</button></div></form></dialog>
   </div>;
 }

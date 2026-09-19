@@ -1,0 +1,6 @@
+node_modules/
+*.gz
+.DS_Store
+*.log
+.env
+.env.local

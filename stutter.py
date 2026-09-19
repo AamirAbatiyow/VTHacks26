@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import librosa
 import numpy as np
 
+# hugging face: https://huggingface.co/vocametrix/wav2vec2-xlsr-53-stuttering-classification
 class AudioClassifier:
 
     def __init__(self,model_name="vocametrix/wav2vec2-xlsr-53-stuttering-classification"):

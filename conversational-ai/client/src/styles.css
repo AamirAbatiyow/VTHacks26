@@ -335,6 +335,28 @@ input.profile-setup__input:focus {
   border-color: var(--danger);
 }
 
+.profile-setup__model {
+  margin-top: 1.5rem;
+}
+
+.profile-setup__model-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.profile-setup__model-select {
+  width: 100%;
+  min-height: 3rem;
+  padding: 0.6rem 1rem;
+  border: 1.5px solid #718d83;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #293f3a;
+  font-size: 1rem;
+}
+
 .profile-setup__error {
   min-height: 1.25rem;
   margin: 0.6rem 0 0;

@@ -21,10 +21,7 @@ export function Controls({ initialConfig, sessionActive, canInterrupt, onStart, 
           <button
             className="primary"
             type="button"
-            onClick={() => onStart({
-              childName: initialConfig?.childName,
-              userRole: initialConfig?.userRole,
-            })}
+            onClick={() => onStart(initialConfig ?? {})}
           >Start Conversation</button>
         ) : (
           <button className="danger" type="button" onClick={onEnd}>End Conversation</button>

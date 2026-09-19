@@ -320,6 +320,15 @@ Key properties:
   the voice pipeline is unaffected. Override the location with
   `STUTTER_MODEL_PATH`.
 
+Two models run per turn, each used where it benchmarks better. Per-type scores
+come from the single-head `stutter.onnx`, while the overall **fluency score**
+comes from `stutter_gate.onnx` — the binary head of a two-head cascade that is
+significantly better at the "is this disfluent at all" call (ROC-AUC 0.815 vs
+0.798, p=0.001 on held-out speakers). The gate is optional: without it fluency
+falls back to the single-head `Fluent` output. Override with
+`STUTTER_GATE_PATH`. See [`ml/stutter`](../ml/stutter/README.md) for the
+full comparison.
+
 The generic hook is still there for phoneme/articulation work:
 
 ```ts

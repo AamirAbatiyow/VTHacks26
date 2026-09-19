@@ -9,6 +9,7 @@ import {
   type ClientJsonMessage,
   type ServerJsonEvent,
   type SessionConfig,
+  type SpeechAnalysisMetadata,
 } from "../../../shared/events.js";
 import { logger } from "../logger.js";
 import type { AppConfig } from "../config.js";
@@ -21,11 +22,13 @@ import { ConversationManager } from "../conversation/ConversationManager.js";
 import { AudioClock } from "../conversation/TurnTimeline.js";
 import {
   NoOpSpeechAnalyzer,
+  stutterAnalysisToMetadata,
   type SpeechAnalyzer,
 } from "../analysis/SpeechAnalyzer.js";
 import { UtteranceCapture } from "../analysis/UtteranceCapture.js";
 import { pcm16ToSignal1d } from "../analysis/signal1d.js";
-import type { StutterClassifier } from "../analysis/StutterClassifier.js";
+import { StutterClassifier } from "../analysis/StutterClassifier.js";
+import { DEFAULT_STUTTER_MODEL_ID } from "../analysis/modelRegistry.js";
 
 /**
  * Fan-out microphone audio bus.
@@ -69,7 +72,9 @@ export class VoiceSession {
   private readonly micBus = new MicrophoneAudioBus();
   private readonly audioClock = new AudioClock(AUDIO_SAMPLE_RATE_IN);
   private readonly speechAnalyzer: SpeechAnalyzer;
-  private readonly stutter: StutterClassifier | null;
+  /** null when an explicit analyzer override was passed (tests / future analyzers). */
+  private readonly stutterModels: Map<string, StutterClassifier> | null;
+  private readonly defaultStutterModelId: string;
 
   private readonly utterance = new UtteranceCapture();
   private sessionConfig: SessionConfig = {};
@@ -82,7 +87,7 @@ export class VoiceSession {
     ws: WebSocket,
     config: AppConfig,
     gemini: GeminiClient,
-    stutter?: StutterClassifier,
+    stutterModels?: Map<string, StutterClassifier>,
     private readonly analytics?: AnalyticsTracker,
     analyzer?: SpeechAnalyzer,
   ) {
@@ -91,8 +96,29 @@ export class VoiceSession {
     this.ws = ws;
     this.config = config;
     this.gemini = gemini;
-    this.stutter = analyzer ? null : stutter ?? null;
-    this.speechAnalyzer = analyzer ?? stutter ?? new NoOpSpeechAnalyzer();
+    this.defaultStutterModelId = config.defaultStutterModelId ?? DEFAULT_STUTTER_MODEL_ID;
+    this.stutterModels = analyzer ? null : stutterModels ?? null;
+    // Fallback SpeechAnalyzer used only if no stutter model map was supplied at all
+    // (e.g. tests). Normal operation always resolves through `this.stutter` below.
+    this.speechAnalyzer = analyzer ?? new NoOpSpeechAnalyzer();
+  }
+
+  /**
+   * The active stutter model for THIS session, resolved fresh from
+   * sessionConfig.stutterModel every call — so a client can switch models
+   * (e.g. via a dropdown) by sending a new start_session config without a
+   * server restart. Falls back to the server default, then to whatever the
+   * first registered model is, if the requested id is unknown.
+   */
+  private get stutter(): StutterClassifier | null {
+    if (!this.stutterModels || this.stutterModels.size === 0) return null;
+    const requested = this.sessionConfig.stutterModel;
+    return (
+      (requested && this.stutterModels.get(requested)) ||
+      this.stutterModels.get(this.defaultStutterModelId) ||
+      this.stutterModels.values().next().value ||
+      null
+    );
   }
 
   attach(): void {
@@ -459,19 +485,31 @@ export class VoiceSession {
       `utterance signal: ${signal.samples.length} pts, ${signal.durationMs}ms`,
     );
 
-    // Stutter detection runs alongside the response rather than in front of it:
-    // blocking here would add its inference time to every turn's latency.
-    void this.runSpeechAnalysis(micSnapshot, text, turnId);
+    // Stutter detection is awaited BEFORE the Gemini call so this turn's
+    // reply can actually react to what was just detected — see
+    // ConversationManager.historyToGeminiContents() for how it's used, and
+    // prompt.ts for how Gemini is told to interpret it. This trades a small,
+    // measured amount of added latency (logged below as inferenceMs) for
+    // same-turn awareness instead of a one-turn lag. If a heavier model
+    // (e.g. vocametrix) makes that trade-off feel bad in practice, switch
+    // the session back to the CNN or two-head model via the dropdown / the
+    // STUTTER_MODEL env var — no code change needed either way.
+    const speechAnalysis = await this.runSpeechAnalysis(micSnapshot, text, turnId);
 
-    await this.conversation.handleUserTurn(text, { t0PerfMs: t0 });
+    await this.conversation.handleUserTurn(text, { t0PerfMs: t0, speechAnalysis });
   }
 
-  /** Classify the utterance audio and push results to the UI when ready. */
+  /**
+   * Classify the utterance audio, push results to the UI, and return a
+   * compact summary for the conversation's own context. Failures are
+   * swallowed (fail open) so a classifier problem never blocks the
+   * conversation — the caller gets `undefined` and moves on.
+   */
   private async runSpeechAnalysis(
     micSnapshot: Buffer,
     text: string,
     turnId: string,
-  ): Promise<void> {
+  ): Promise<SpeechAnalysisMetadata | undefined> {
     try {
       const analysis = await this.stutter?.classify(
         micSnapshot,
@@ -488,7 +526,7 @@ export class VoiceSession {
             `${analysis.inferenceMs}ms)`,
         );
         this.send({ type: "stutter_analysis", turnId, analysis });
-        return;
+        return stutterAnalysisToMetadata(analysis, this.sessionConfig.targetPhoneme);
       }
 
       // Model unavailable — fall back to whatever analyzer is configured.
@@ -504,9 +542,11 @@ export class VoiceSession {
       if (result.stuttering) {
         this.analytics?.trackStutteringAssessment(this.sessionId, turnId, result.stuttering);
       }
+      return { targetPhoneme: result.targetPhoneme, observations: result.observations };
 
     } catch (err) {
       logger.warn("SESSION", "speech analysis failed", String(err));
+      return undefined;
     }
 
   }
