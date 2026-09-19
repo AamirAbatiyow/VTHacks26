@@ -3,14 +3,30 @@
  * Single source of truth — imported by both client and server.
  */
 
+export const USER_ROLES = [
+  "Language development",
+  "Student",
+  "Educator",
+  "Social member",
+  "Public speaker",
+  "Neurodegenerative support",
+] as const;
+
+export type UserRole = (typeof USER_ROLES)[number];
+
 /** Session configuration sent when starting a conversation. */
 export interface SessionConfig {
   childName?: string;
+  userRole?: UserRole;
   age?: number;
   interests?: string[];
   targetPhoneme?: string;
   /** Id from the server-reported availableStutterModels list; defaults to the server's configured default if omitted. */
   stutterModel?: string;
+  /** Self-reported areas the user would like to practice. */
+  practiceGoals?: string[];
+  /** Optional context supplied during onboarding, up to 1,000 characters. */
+  needsDescription?: string;
 }
 
 /** Optional future speech-analysis metadata attached to a user turn. */

@@ -96,6 +96,98 @@ Thresholds maximize F1, which leans toward recall. If false positives are more
 costly than misses in your setting, raise them in `stutter.json` — the ranking
 quality (AUC) is unaffected.
 
+## Two-head variant (experimental)
+
+The single-head model's weakest decision is the aggregate one — "is this clip
+disfluent at all" — so `model_twohead.py` splits that out into a cascade:
+
+    stage 1   binary gate    any stutter vs not      (trained on every clip)
+    stage 2   type head      which type(s)           (trained only on
+                                                      stutter-positive clips)
+
+Both heads share one trunk, so it is still a single forward pass and still
+1.31M parameters. Freed from the fluent majority, stage 2 spends its capacity
+on telling stutter types apart rather than on detecting them. Per-class output
+is the cascade product `P(any) * P(type | any)`.
+
+Stage 1 predicts `Fluent` **directly** rather than as `1 - P(any stutter)`.
+SEP-28k annotates `Fluent` independently and it agrees with "no stutter type
+reached 2 votes" only 80% of the time — 2,828 clips carry both a stutter and a
+`Fluent` label, and 1,260 carry neither. An earlier revision derived it and
+lost 0.12 AUC on that class alone.
+
+```bash
+../.venv/bin/python train_twohead.py --data <dir> --out artifacts_twohead --device mps
+../.venv/bin/python compare_twohead.py --data <dir> --device mps
+```
+
+`--detach` cannot be combined with `--device mps`: daemonizing calls `setsid()`,
+which leaves the Mach bootstrap namespace and makes Metal's shader compiler
+unreachable, aborting on the first GPU kernel.
+
+### Results vs. the single-head model
+
+Same trunk, seed, splits, augmentation, schedule, and epoch count, so the
+comparison isolates the architecture. Deltas carry a 2000-sample paired
+bootstrap over test clips.
+
+Stage 1, any stutter vs. not (test n=2642, 1406 positive):
+
+| Metric | Single-head | Two-head | Delta |
+| --- | --- | --- | --- |
+| ROC-AUC | 0.798 | **0.815** | **+0.017**, 95% CI [+0.008, +0.026], p=0.001 |
+| Avg. precision | 0.823 | **0.835** | +0.012 |
+| F1 | 0.753 | **0.764** | +0.011 |
+| Accuracy | 0.715 | **0.734** | +1.9 pts |
+
+The single-head model has no explicit "any stutter" output, so it is scored
+with the better of two rules, chosen on validation: `max P(type)` (AUC 0.811)
+beat `1 - P(Fluent)` (0.721).
+
+Per-class ROC-AUC:
+
+| Class | Single-head | Two-head | Delta | p |
+| --- | --- | --- | --- | --- |
+| Prolongation | 0.882 | 0.871 | -0.011 | 0.031 |
+| Block | 0.725 | 0.697 | -0.028 | 0.002 |
+| SoundRep | 0.853 | 0.850 | -0.003 | 0.56 |
+| WordRep | 0.769 | 0.759 | -0.010 | 0.12 |
+| Interjection | 0.917 | 0.920 | +0.003 | 0.36 |
+| Fluent | 0.793 | 0.788 | -0.005 | 0.20 |
+| **Macro** | **0.823** | 0.814 | -0.009 | |
+
+So the cascade buys a real, significant gain on the abnormal/normal gate and
+pays for it with a small regression on fine-grained typing — significant only
+for `Prolongation` and `Block`. That is the expected trade: stage 2 sees only
+the 53% of clips that are stutter-positive, so each type has roughly half the
+training signal it had in the single-head model. Weighted F1 is a wash (0.650
+vs 0.644).
+
+### What ships
+
+Each model is used where it wins. The server keeps the single-head
+`stutter.onnx` for per-type scores and adds the two-head `stutter_gate.onnx`
+for the overall fluency score:
+
+```bash
+../.venv/bin/python export_onnx_twohead.py \
+  --out ../../conversational-ai/server/models/stutter_gate.onnx
+```
+
+The gate graph exposes two outputs — `logits [B,6]` (cascade log-odds, same
+contract as the single-head export) and `gate [B]` (stage-1 any-stutter
+log-odds). Only `gate` is consumed today; `logits` is there so the two-head
+model can stand alone later without a re-export.
+
+Both graphs run on the same batched windows, so the cost is one extra ~66 ms
+pass per 8-window batch. That sits in the post-utterance analysis path, not the
+speech path, so it does not affect conversational latency. `stutter_gate.onnx`
+is optional: if it is absent, fluency falls back to the single-head `Fluent`
+output and a log line says so. Override its location with `STUTTER_GATE_PATH`.
+
+Verified against the deployed artifacts on the test split: gate AUC 0.8149 and
+single-head AUC 0.7980, matching the PyTorch numbers exactly.
+
 ## Export
 
 ```bash

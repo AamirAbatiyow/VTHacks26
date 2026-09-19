@@ -36,8 +36,9 @@ async function main(): Promise<void> {
   );
 
   // One StutterClassifier per registered model, shared by every connection.
-  // Each lazily loads its own ONNX file on first use, so unused variants
-  // (e.g. "cascade" before it exists) cost nothing until selected.
+  // Each lazily loads its own ONNX file (and, by filename convention, an
+  // optional "<name>_gate.onnx" two-head fluency gate) on first use, so
+  // unused variants cost nothing until selected.
   const stutterModels = new Map(
     STUTTER_MODELS.map((m) => [m.id, new StutterClassifier(m.modelPath)] as const),
   );

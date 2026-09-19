@@ -15,17 +15,26 @@ const modelsDir = path.resolve(__dirname, "../../models");
  *           LABELS order as model.py: Prolongation, Block, SoundRep,
  *           WordRep, Interjection, Fluent)
  * plus a sidecar "<name>.json" with {labels, sampleRate, clipSamples,
- * thresholds}.
+ * thresholds}. Extra outputs/fields (e.g. "gate", gateThreshold) are ignored
+ * here and are fine to include.
  *
  * The CNN (export_onnx.py) is naturally multi-label sigmoid. vocametrix
  * (export_onnx_vocametrix.py) is a single-label softmax classifier, so its
  * export bakes softmax -> inverse-sigmoid into the graph (logit = ln(p/(1-p)))
  * so sigmoid(logits) reproduces its softmax probabilities exactly — the
  * server never needs to know which activation a given model natively uses.
- * A two-head cascade model must similarly combine its gate + subclass heads
- * into a single final 6-vector at export time, NOT expose two separate
- * outputs — that's what lets the server treat every variant identically
- * with no runtime branching.
+ *
+ * The two-head model (ml/stutter/export_onnx_twohead.py) exports BOTH a
+ * standalone-compatible "logits" output (registered below as "twohead") AND
+ * a "gate" output. StutterClassifier.ts separately auto-loads a sibling
+ * "<modelPath>_gate.onnx" file next to whichever model is active (by
+ * filename convention, e.g. stutter.onnx -> stutter_gate.onnx) and blends
+ * that gate's fluency call into the result. This means the CNN's fluency
+ * score is quietly improved by the two-head gate whenever both files are
+ * present, WITHOUT the two-head model needing its own registry entry — the
+ * "twohead" entry below exists so it can also be selected and compared
+ * head-to-head as a fully independent model, not because the CNN needs it
+ * registered to use its gate.
  */
 export interface StutterModelDescriptor {
   id: string;
@@ -46,16 +55,15 @@ export const STUTTER_MODELS: StutterModelDescriptor[] = [
     modelPath: path.join(modelsDir, "stutter_vocametrix.onnx"),
   },
   {
-    id: "cascade",
-    label: "CNN — fluent-gate + subclass cascade",
-    modelPath: path.join(modelsDir, "stutter_cascade.onnx"),
+    id: "twohead",
+    label: "Two-head cascade — fluent-gate + subclass (standalone)",
+    modelPath: path.join(modelsDir, "stutter_gate.onnx"),
   },
   // Add new entries here as ml/stutter/export_onnx*.py produces new variants.
   // id is what the client sends in SessionConfig.stutterModel and what
   // STUTTER_MODEL selects by default; label is display-only. A model whose
   // .onnx/.json pair doesn't exist yet is safe to list: StutterClassifier
-  // disables itself gracefully (see its load()) rather than crashing, so
-  // "cascade" and "vocametrix" can be registered ahead of the file landing.
+  // disables itself gracefully (see its load()) rather than crashing.
 ];
 
 export const DEFAULT_STUTTER_MODEL_ID: string =

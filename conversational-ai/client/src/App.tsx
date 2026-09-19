@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Conversation } from "./components/Conversation";
 import { IntroScreen } from "./components/IntroScreen";
 import { ProfileSetup } from "./components/ProfileSetup";
+import { WaterGarden } from "./components/WaterGarden";
+import { Dashboard } from "./components/Dashboard";
 import type { SessionConfig } from "@shared/events";
-import waterGarden from "./assets/water-garden.png";
 
 export default function App() {
   const [phase, setPhase] = useState<"intro" | "transition" | "practice">("intro");
   const [profile, setProfile] = useState<SessionConfig | null>(null);
+  const [showConversation, setShowConversation] = useState(false);
   const practiceRef = useRef<HTMLElement>(null);
   const startTransition = useCallback(() => setPhase("transition"), []);
   const finishTransition = useCallback(() => setPhase("practice"), []);
@@ -16,7 +18,7 @@ export default function App() {
     if (phase === "practice" && profile) {
       practiceRef.current?.focus({ preventScroll: true });
     }
-  }, [phase, profile]);
+  }, [phase, profile, showConversation]);
 
   return (
     <main className="app-shell" data-phase={phase}>
@@ -30,16 +32,27 @@ export default function App() {
       <section
         ref={practiceRef}
         className="practice-section"
-        aria-labelledby={profile ? "practice-title" : "setup-title"}
+        aria-labelledby={profile ? (showConversation ? "practice-title" : "welcome-title") : "setup-title"}
         aria-hidden={phase !== "practice"}
         inert={phase !== "practice"}
         tabIndex={-1}
       >
-        <img className="practice-scenery" src={waterGarden} alt="" aria-hidden="true" />
-        {!profile && <ProfileSetup active={phase === "practice"} onComplete={setProfile} />}
-        <div className="practice-workspace" hidden={!profile}>
-          <Conversation initialConfig={profile} />
-        </div>
+        {!profile && <WaterGarden active={phase === "practice"} />}
+        {!profile && (
+          <ProfileSetup
+            active={phase === "practice"}
+            onComplete={setProfile}
+          />
+        )}
+        {profile && !showConversation && (
+          <Dashboard profile={profile} onPractice={() => setShowConversation(true)} onProfileChange={setProfile} />
+        )}
+        {profile && showConversation && (
+          <div className="practice-workspace">
+            <button type="button" onClick={() => setShowConversation(false)}>← Back to dashboard</button>
+            <Conversation initialConfig={profile} />
+          </div>
+        )}
       </section>
     </main>
   );

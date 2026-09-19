@@ -93,6 +93,19 @@ export function IntroScreen({ onExitStart, onExited }: Props) {
         }
       }}
     >
+      {/* Recolor luminance only: original swirl contours and texture stay intact. */}
+      <svg width="0" height="0" aria-hidden="true" focusable="false" style={{ position: "absolute" }}>
+        <defs>
+          <filter id="intro-garden-palette" colorInterpolationFilters="sRGB">
+            <feColorMatrix type="saturate" values="0" />
+            <feComponentTransfer>
+              <feFuncR type="table" tableValues="0.094 0.145 0.208 0.580 0.808 0.961" />
+              <feFuncG type="table" tableValues="0.231 0.298 0.353 0.722 0.906 0.980" />
+              <feFuncB type="table" tableValues="0.208 0.263 0.314 0.678 0.929 0.976" />
+            </feComponentTransfer>
+          </filter>
+        </defs>
+      </svg>
       <button
         className="intro__enter"
         type="button"
