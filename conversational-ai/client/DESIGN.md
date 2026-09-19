@@ -40,8 +40,10 @@ loaded on demand rather than included in the production bundle.
 classifier; identity embeddings, demographic inference, mesh, body, and hand
 models are disabled. Video frames stay in browser memory. No frames or results
 are sent to the server or saved by this feature. Model files may be cached by
-the library. Inference is serialized and paced at one request per 500 ms after
-the previous request completes, using a 320-pixel analysis input.
+the library. Camera capture requests 60 fps where supported. Inference is
+serialized and targets 10 analyses per second, counting inference time toward
+each 100 ms interval, using a 320-pixel analysis input. Slower devices run at
+their achievable inference rate without accumulating overlapping requests.
 
 Results are labeled **expression estimates**, not mood measurements. The model
 outputs neutral/happy/sad/angry/fear/disgust/surprise classes. No face, multiple

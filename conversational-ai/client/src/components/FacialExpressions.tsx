@@ -4,6 +4,8 @@ import { summarizeExpressions, type ExpressionSummary } from '../vision/expressi
 import './FacialExpressions.css';
 
 const empty: ExpressionSummary = { label: null, scores: [], message: 'Camera is off' };
+const CAMERA_FRAME_RATE = 60;
+const EXPRESSION_INTERVAL_MS = 100; // Target 10 analyses/sec, limited by inference speed.
 const displayLabels = { neutral: 'Neutral', happy: 'Happy-looking', sad: 'Sad-looking', angry: 'Angry-looking', fear: 'Fearful-looking', disgust: 'Disgusted-looking', surprise: 'Surprised-looking' };
 function errorMessage(error: unknown) {
   if (error instanceof DOMException) {
@@ -56,7 +58,7 @@ export function FacialExpressions() {
       const model = await loadExpressionModel().catch(() => { throw new Error('Could not load the expression model. Check your internet connection and allow cdn.jsdelivr.net, then retry.'); });
       if (!current()) return;
       setSummary({ ...empty, message: 'Waiting for camera permission…' });
-      const media = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } });
+      const media = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: CAMERA_FRAME_RATE, max: CAMERA_FRAME_RATE } } });
       if (!current()) { media.getTracks().forEach(track => track.stop()); return; }
       stream.current = media;
       media.getVideoTracks().forEach(track => track.addEventListener('ended', () => {
@@ -71,6 +73,7 @@ export function FacialExpressions() {
       setState('running');
       async function tick() {
         if (!current()) return;
+        const startedAt = performance.now();
         try {
           if (element!.readyState >= 2) {
             const result = await detectExpression(model, element!, current);
@@ -78,7 +81,9 @@ export function FacialExpressions() {
             if (result?.error) throw new Error('Expression analysis failed. Stop the camera and try again.');
             if (result) setSummary(summarizeExpressions(result));
           }
-          if (current()) timer.current = setTimeout(() => void tick(), 500);
+          // Count inference time toward the interval instead of adding a fixed delay.
+          // Scheduling only after completion preserves one in-flight analysis.
+          if (current()) timer.current = setTimeout(() => void tick(), Math.max(0, EXPRESSION_INTERVAL_MS - (performance.now() - startedAt)));
         } catch (failure) {
           if (current()) { stop(); setError(errorMessage(failure)); }
         }
