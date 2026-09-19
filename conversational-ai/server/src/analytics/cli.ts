@@ -14,6 +14,8 @@ async function main(): Promise<void> {
       else if (command === "report") {
         const since = new Date(Date.now() - 7 * 86400000).toISOString();
         console.log(`Local analytics database: ${local.filename}`);
+        console.table(local.db.prepare(`SELECT * FROM conversations
+          WHERE started_at >= ? ORDER BY started_at DESC`).all(since));
         console.table(local.db.prepare("SELECT * FROM hourly_latency WHERE hour >= ? ORDER BY hour DESC").all(since));
         console.table(local.db.prepare(`SELECT count(*) AS connections,
           count(started_at) AS started_sessions, count(ended_at) AS ended_sessions,
@@ -42,6 +44,9 @@ async function main(): Promise<void> {
         throw error;
       } finally { client.release(); }
     } else if (command === "report") {
+      const conversations = await pool.query(`SELECT * FROM analytics.conversations
+        WHERE started_at >= now() - interval '7 days' ORDER BY started_at DESC`);
+      console.table(conversations.rows);
       const result = await pool.query(`SELECT * FROM analytics.hourly_latency
         WHERE hour >= now() - interval '7 days' ORDER BY hour DESC`);
       console.table(result.rows);

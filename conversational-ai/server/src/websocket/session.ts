@@ -66,15 +66,16 @@ export class VoiceSession {
   private conversation: ConversationManager | null = null;
   private readonly micBus = new MicrophoneAudioBus();
   private readonly audioClock = new AudioClock(AUDIO_SAMPLE_RATE_IN);
-  private readonly speechAnalyzer: SpeechAnalyzer = new NoOpSpeechAnalyzer();
   private readonly utterance = new UtteranceCapture();
   private sessionConfig: SessionConfig = {};
   private started = false;
   private closed = false;
   private readonly connectedAt = performance.now();
+  private conversationStartedAt: number | null = null;
 
   constructor(ws: WebSocket, config: AppConfig, gemini: GeminiClient,
-    private readonly analytics?: AnalyticsTracker) {
+    private readonly analytics?: AnalyticsTracker,
+    private readonly speechAnalyzer: SpeechAnalyzer = new NoOpSpeechAnalyzer()) {
     this.sessionId = randomUUID();
     this.ws = ws;
     this.config = config;
@@ -215,6 +216,9 @@ export class VoiceSession {
       return;
     }
     this.sessionConfig = config;
+    this.analytics?.track(this.sessionId, { type: "conversation_profile", properties: {
+      name: typeof config.childName === "string" ? config.childName.trim() || null : null,
+    } });
     this.started = true;
     this.audioClock.start();
 
@@ -380,6 +384,7 @@ export class VoiceSession {
       detail: this.gemini.getModel(),
     });
 
+    this.conversationStartedAt = performance.now();
     this.send({
       type: "session_started",
       sessionId: this.sessionId,
@@ -421,7 +426,7 @@ export class VoiceSession {
     // Original mic PCM for this utterance — not the transcript.
     const micSnapshot = this.utterance.take();
     const signal = pcm16ToSignal1d(micSnapshot, AUDIO_SAMPLE_RATE_IN);
-    const turnId = `turn-${Date.now()}`;
+    const turnId = randomUUID();
     this.send({ type: "transcript_final", text, turnId, signal });
     logger.info(
       "AUDIO",
@@ -431,11 +436,16 @@ export class VoiceSession {
     let speechAnalysis;
     try {
       const result = await this.speechAnalyzer.analyze({
+        sessionId: this.sessionId,
+        utteranceId: turnId,
         pcm16: micSnapshot,
         sampleRate: AUDIO_SAMPLE_RATE_IN,
         transcript: text,
         targetPhoneme: this.sessionConfig.targetPhoneme,
       });
+      if (result.stuttering) {
+        this.analytics?.trackStutteringAssessment(this.sessionId, turnId, result.stuttering);
+      }
       if (result.observations.length > 0 || result.targetPhoneme) {
         speechAnalysis = {
           targetPhoneme: result.targetPhoneme,
@@ -446,7 +456,7 @@ export class VoiceSession {
       logger.warn("SESSION", "SpeechAnalyzer failed", String(err));
     }
 
-    await this.conversation.handleUserTurn(text, {
+    await this.conversation?.handleUserTurn(text, {
       speechAnalysis,
       t0PerfMs: t0,
     });
@@ -457,6 +467,8 @@ export class VoiceSession {
     this.closed = true;
     this.analytics?.track(this.sessionId, { type: "session_ended", properties: {
       reason, durationMs: Math.round(performance.now() - this.connectedAt),
+      conversationDurationMs: this.conversationStartedAt == null ? null
+        : Math.round(performance.now() - this.conversationStartedAt),
     } });
     logger.info("SESSION", `cleanup: ${reason}`);
 

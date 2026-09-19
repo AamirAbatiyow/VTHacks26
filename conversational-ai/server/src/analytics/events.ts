@@ -6,13 +6,14 @@ export interface AnalyticsEvent {
   properties: Record<string, string | number | boolean | null>;
 }
 
-/** Explicit allowlist: never persist transcripts, audio, profiles or error messages. */
+/** Explicit allowlist: never persist transcripts, audio or free-form error messages. */
 export function projectEvent(event: ServerJsonEvent): AnalyticsEvent | null {
   switch (event.type) {
     case "session_started":
       return { type: event.type, properties: {} };
     case "transcript_final":
       return { type: "user_utterance", properties: {
+        utteranceId: event.turnId,
         characters: event.text.length,
         words: event.text.trim().split(/\s+/).filter(Boolean).length,
         durationMs: event.signal?.durationMs ?? null,

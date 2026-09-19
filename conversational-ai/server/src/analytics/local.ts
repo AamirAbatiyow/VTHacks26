@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AnalyticsDatabase, StoredEvent } from "./AnalyticsTracker.js";
+import { conversationSchema } from "./conversationSchema.js";
 
 // Resolve against the project, not cwd, for both tsx source and compiled server.
 const modulePath = fileURLToPath(import.meta.url);
@@ -66,6 +67,14 @@ export class LocalAnalyticsDatabase implements AnalyticsDatabase {
         avg(server_to_first_audio_ms) AS avg_server_to_first_audio_ms
       FROM turns GROUP BY 1;
     `);
+    // Rebuild derived views transactionally, preserving every existing event.
+    try {
+      this.db.exec(`BEGIN; ${conversationSchema("sqlite")} COMMIT;`);
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      this.db.close();
+      throw error;
+    }
   }
 
   async writeBatch(events: StoredEvent[]): Promise<void> {

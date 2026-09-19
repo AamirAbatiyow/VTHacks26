@@ -77,10 +77,10 @@ Vite proxies `/ws` → `ws://localhost:3001/ws`.
 
 ## Analytics: local SQLite, optional Tiger Data PostgreSQL
 
-The server records anonymous session IDs, session start/end and duration,
+The server records session IDs, the profile name, conversation date and duration,
 utterance word/character counts and audio duration, assistant responses by count,
 interruptions, provider status, error codes, and measured STT/Gemini/TTS latency.
-It does not persist names, ages, interests, transcripts, audio, waveforms, or
+It does not persist ages, interests, transcripts, audio, waveforms, or
 free-form provider/error messages. There is no cross-session user identifier.
 
 ### Local file (default)
@@ -98,6 +98,7 @@ npm run analytics:report
 Leave `DATABASE_URL` unset to use SQLite. Optionally set `ANALYTICS_DB_PATH` in
 `server/.env` to another file path (relative to `conversational-ai/`, or absolute).
 The local database contains `events`, `sessions`, `turns`, and `hourly_latency`.
+It also includes `conversations` and `stuttering_utterances` for identification results.
 It uses SQLite's rollback journal, leaving one database file after clean writes.
 Small transactions run once per second; local SQLite writes are synchronous and
 may briefly occupy the server event loop. The local report includes average
@@ -128,7 +129,7 @@ SQLite history. The local file remains available for inspection.
    npm run dev
    ```
 
-   This creates `analytics.events` and three SQL views. The migration is
+   This creates `analytics.events` and its reporting views. The migration is
    transactional and repeatable. The TimescaleDB option requires the extension
    to be available and an account allowed to create/enable it. Plain PostgreSQL
    development databases can use `npm run db:migrate` without `--timescale`.
@@ -165,6 +166,65 @@ shutdown window. Events are retained until explicitly deleted; no automatic
 retention policy or public analytics API is enabled.
 
 Run the isolated analytics tests with `npm run test:analytics`.
+
+### Conversation and stuttering analytics
+
+`npm run analytics:report` includes one row per conversation for the last seven
+days. Query all local records with `SELECT * FROM conversations`. In Tiger Data,
+use `analytics.conversations` after running `npm run db:migrate`.
+
+Each row includes the profile `name`, UTC `conversation_date`, `started_at`,
+`ended_at`, and `conversation_length_ms` (successful voice initialization to session
+cleanup, including pauses and assistant speech). Length stays NULL while active;
+old sessions without this measurement also stay NULL. Names are stored as entered
+in profile setup, so historical unnamed sessions remain NULL.
+
+| Report column | Identification-loop classification |
+|---|---|
+| `prolongation_count` | Elongated syllables, such as M[mmm]ommy |
+| `block_count` | Identified gasps or stuttered pauses |
+| `sound_repetition_count` | Repeated sounds/syllables, such as [pr-pr-pr-]prepared |
+| `word_repetition_count` | Repeated words or phrases, such as made [made] |
+| `no_stuttered_words_count` | Number of analyzed utterances explicitly confirmed to have none of the five event types |
+| `interjection_count` | Identified fillers, including um, uh, or person-specific fillers |
+
+The classifier decides occurrence boundaries (for example, a repeated-sound run
+is one event rather than one event per repeated syllable). Interjections are
+classified by the loop, including person-specific context; analytics does not
+assume every filler or pause is a stutter.
+
+The identification loop is **not implemented yet**. `NoOpSpeechAnalyzer` omits
+classification, and reports show `analysis_status = 'not_analyzed'` with NULL
+counts. `partial` means only some utterances have results; totals then describe
+only those utterances. `complete` means all currently recorded utterances have
+results, not that the conversation has ended. `analyzed_utterances` and
+`user_utterances` expose coverage.
+
+Implement `SpeechAnalyzer.analyze()` and return `stuttering` along with its
+existing fields. The input contains original PCM audio, `sessionId`, and a stable
+`utteranceId`. Inject that analyzer as the fifth `VoiceSession` constructor
+argument. Its returned assessment is automatically recorded. An independent
+identification loop can instead call the same tracker directly:
+
+```ts
+analytics.trackStutteringAssessment(sessionId, utteranceId, {
+  revision: 1,
+  prolongation: 1,
+  block: 0,
+  soundRepetition: 2,
+  wordRepetition: 0,
+  interjection: 1,
+  noStutteredWords: false,
+});
+```
+
+Submit a **full cumulative snapshot for one utterance**, not increments. Increase
+`revision` when correcting its counts. Reports use the highest revision per
+session/utterance, so retries and late older results do not double-count. Only
+assessments linked to a recorded user utterance are included. Use nonnegative
+integer counts; set `noStutteredWords: true` only when all five counts are zero.
+Pending, failed, or uncertain classifications should omit the assessment.
+The database file remains tracked by Git as requested.
 
 ## Audio format
 
