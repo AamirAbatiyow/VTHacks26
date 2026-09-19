@@ -3,6 +3,7 @@ import { Transcript } from "./Transcript";
 import { Controls } from "./Controls";
 import { StatusBar } from "./StatusBar";
 import { LatencyPanel } from "./LatencyPanel";
+import { FacialExpressions } from "./FacialExpressions";
 import type { SessionConfig } from "@shared/events";
 
 export function Conversation({ initialConfig }: { initialConfig?: SessionConfig | null }) {
@@ -41,6 +42,7 @@ export function Conversation({ initialConfig }: { initialConfig?: SessionConfig 
           assistantStreaming={session.assistantStreaming}
         />
         <div className="side">
+          <FacialExpressions />
           <LatencyPanel metrics={session.metrics} />
           <div className="logs">
             <h2>Logs</h2>

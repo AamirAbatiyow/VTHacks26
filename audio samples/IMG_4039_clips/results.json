@@ -1,0 +1,384 @@
+{
+  "source": "/Users/geoffreyzhu/Desktop/VTHacks26/audio samples/IMG_4039.mp3",
+  "model": "/Users/geoffreyzhu/Desktop/VTHacks26/conversational-ai/server/models/stutter.onnx",
+  "modelSha256": "7dcb743d6ffee37d8e7baaf1e2522c372888939dc03c2521531a9b40677986d9",
+  "decoder": "mpg123",
+  "sampleRate": 48000,
+  "modelSampleRate": 16000,
+  "resampling": "Server classifier linear resampling",
+  "durationSeconds": 12.734666666666667,
+  "clipSeconds": 3,
+  "thresholds": {
+    "Prolongation": 0.73,
+    "Block": 0.69,
+    "SoundRep": 0.7699999999999999,
+    "WordRep": 0.61,
+    "Interjection": 0.6599999999999999,
+    "Fluent": 0.36999999999999994
+  },
+  "totalClips": 5,
+  "classifiedClips": 5,
+  "clipsAboveThreshold": {
+    "Prolongation": 1,
+    "Block": 0,
+    "SoundRep": 1,
+    "WordRep": 2,
+    "Interjection": 0,
+    "Fluent": 4
+  },
+  "notes": [
+    "Non-overlapping clips; final clip is zero-padded.",
+    "Independent labels may overlap. Scores are model outputs, not verified labels.",
+    "Low-energy clips are saved but skipped by the server silence gate."
+  ],
+  "clips": [
+    {
+      "clip": "clip_001.wav",
+      "startSeconds": 0,
+      "endSeconds": 3,
+      "paddedSeconds": 0,
+      "status": "classified",
+      "detected": [
+        "Fluent"
+      ],
+      "analysis": {
+        "labels": [
+          "Prolongation",
+          "Block",
+          "SoundRep",
+          "WordRep",
+          "Interjection",
+          "Fluent"
+        ],
+        "events": [
+          {
+            "label": "Prolongation",
+            "probability": 0.373,
+            "detected": false
+          },
+          {
+            "label": "Block",
+            "probability": 0.432,
+            "detected": false
+          },
+          {
+            "label": "SoundRep",
+            "probability": 0.244,
+            "detected": false
+          },
+          {
+            "label": "WordRep",
+            "probability": 0.548,
+            "detected": false
+          },
+          {
+            "label": "Interjection",
+            "probability": 0.212,
+            "detected": false
+          },
+          {
+            "label": "Fluent",
+            "probability": 0.68,
+            "detected": true
+          }
+        ],
+        "windows": [
+          {
+            "startMs": 0,
+            "endMs": 3000,
+            "scores": [
+              0.373,
+              0.432,
+              0.244,
+              0.548,
+              0.212,
+              0.68
+            ]
+          }
+        ],
+        "fluency": 0.769,
+        "analyzedMs": 3000,
+        "inferenceMs": 26
+      }
+    },
+    {
+      "clip": "clip_002.wav",
+      "startSeconds": 3,
+      "endSeconds": 6,
+      "paddedSeconds": 0,
+      "status": "classified",
+      "detected": [
+        "WordRep",
+        "Fluent"
+      ],
+      "analysis": {
+        "labels": [
+          "Prolongation",
+          "Block",
+          "SoundRep",
+          "WordRep",
+          "Interjection",
+          "Fluent"
+        ],
+        "events": [
+          {
+            "label": "Prolongation",
+            "probability": 0.322,
+            "detected": false
+          },
+          {
+            "label": "Block",
+            "probability": 0.438,
+            "detected": false
+          },
+          {
+            "label": "SoundRep",
+            "probability": 0.122,
+            "detected": false
+          },
+          {
+            "label": "WordRep",
+            "probability": 0.656,
+            "detected": true
+          },
+          {
+            "label": "Interjection",
+            "probability": 0.639,
+            "detected": false
+          },
+          {
+            "label": "Fluent",
+            "probability": 0.693,
+            "detected": true
+          }
+        ],
+        "windows": [
+          {
+            "startMs": 0,
+            "endMs": 3000,
+            "scores": [
+              0.322,
+              0.438,
+              0.122,
+              0.656,
+              0.639,
+              0.693
+            ]
+          }
+        ],
+        "fluency": 0.59,
+        "analyzedMs": 3000,
+        "inferenceMs": 28
+      }
+    },
+    {
+      "clip": "clip_003.wav",
+      "startSeconds": 6,
+      "endSeconds": 9,
+      "paddedSeconds": 0,
+      "status": "classified",
+      "detected": [
+        "SoundRep",
+        "WordRep"
+      ],
+      "analysis": {
+        "labels": [
+          "Prolongation",
+          "Block",
+          "SoundRep",
+          "WordRep",
+          "Interjection",
+          "Fluent"
+        ],
+        "events": [
+          {
+            "label": "Prolongation",
+            "probability": 0.341,
+            "detected": false
+          },
+          {
+            "label": "Block",
+            "probability": 0.675,
+            "detected": false
+          },
+          {
+            "label": "SoundRep",
+            "probability": 0.797,
+            "detected": true
+          },
+          {
+            "label": "WordRep",
+            "probability": 0.65,
+            "detected": true
+          },
+          {
+            "label": "Interjection",
+            "probability": 0.49,
+            "detected": false
+          },
+          {
+            "label": "Fluent",
+            "probability": 0.281,
+            "detected": false
+          }
+        ],
+        "windows": [
+          {
+            "startMs": 0,
+            "endMs": 3000,
+            "scores": [
+              0.341,
+              0.675,
+              0.797,
+              0.65,
+              0.49,
+              0.281
+            ]
+          }
+        ],
+        "fluency": 0.481,
+        "analyzedMs": 3000,
+        "inferenceMs": 29
+      }
+    },
+    {
+      "clip": "clip_004.wav",
+      "startSeconds": 9,
+      "endSeconds": 12,
+      "paddedSeconds": 0,
+      "status": "classified",
+      "detected": [
+        "Fluent"
+      ],
+      "analysis": {
+        "labels": [
+          "Prolongation",
+          "Block",
+          "SoundRep",
+          "WordRep",
+          "Interjection",
+          "Fluent"
+        ],
+        "events": [
+          {
+            "label": "Prolongation",
+            "probability": 0.285,
+            "detected": false
+          },
+          {
+            "label": "Block",
+            "probability": 0.48,
+            "detected": false
+          },
+          {
+            "label": "SoundRep",
+            "probability": 0.543,
+            "detected": false
+          },
+          {
+            "label": "WordRep",
+            "probability": 0.439,
+            "detected": false
+          },
+          {
+            "label": "Interjection",
+            "probability": 0.146,
+            "detected": false
+          },
+          {
+            "label": "Fluent",
+            "probability": 0.607,
+            "detected": true
+          }
+        ],
+        "windows": [
+          {
+            "startMs": 0,
+            "endMs": 3000,
+            "scores": [
+              0.285,
+              0.48,
+              0.543,
+              0.439,
+              0.146,
+              0.607
+            ]
+          }
+        ],
+        "fluency": 0.646,
+        "analyzedMs": 3000,
+        "inferenceMs": 27
+      }
+    },
+    {
+      "clip": "clip_005.wav",
+      "startSeconds": 12,
+      "endSeconds": 12.734666666666667,
+      "paddedSeconds": 2.2653333333333334,
+      "status": "classified",
+      "detected": [
+        "Prolongation",
+        "Fluent"
+      ],
+      "analysis": {
+        "labels": [
+          "Prolongation",
+          "Block",
+          "SoundRep",
+          "WordRep",
+          "Interjection",
+          "Fluent"
+        ],
+        "events": [
+          {
+            "label": "Prolongation",
+            "probability": 0.756,
+            "detected": true
+          },
+          {
+            "label": "Block",
+            "probability": 0.484,
+            "detected": false
+          },
+          {
+            "label": "SoundRep",
+            "probability": 0.087,
+            "detected": false
+          },
+          {
+            "label": "WordRep",
+            "probability": 0.009,
+            "detected": false
+          },
+          {
+            "label": "Interjection",
+            "probability": 0.314,
+            "detected": false
+          },
+          {
+            "label": "Fluent",
+            "probability": 0.642,
+            "detected": true
+          }
+        ],
+        "windows": [
+          {
+            "startMs": 0,
+            "endMs": 3000,
+            "scores": [
+              0.756,
+              0.484,
+              0.087,
+              0.009,
+              0.314,
+              0.642
+            ]
+          }
+        ],
+        "fluency": 0.462,
+        "analyzedMs": 3000,
+        "inferenceMs": 27
+      }
+    }
+  ]
+}
