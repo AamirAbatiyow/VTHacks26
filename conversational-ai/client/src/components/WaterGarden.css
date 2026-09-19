@@ -1,0 +1,174 @@
+.water-garden {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  background: #f3faf9;
+  container-type: size;
+}
+
+.water-garden__scene {
+  position: absolute;
+  /* Art, interactive pads, and ripples always share the same cropped canvas. */
+  width: max(100cqw, 159.879cqh);
+  height: max(100cqh, 62.547cqw);
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.water-garden__art,
+.water-garden__currents,
+.water-garden__touch-ripples {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.water-garden__art {
+  object-fit: cover;
+  object-position: center;
+}
+
+.water-garden__flow {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 85 160 34 220;
+  opacity: 0.65;
+  animation: garden-current 32s linear infinite;
+}
+
+.water-garden__flow--lower {
+  stroke-width: 3;
+  animation-duration: 42s;
+  animation-delay: -19s;
+}
+
+.water-garden__sheen {
+  fill: none;
+  stroke-width: 18;
+  stroke-linecap: round;
+  opacity: 0.08;
+  animation: garden-sheen 13s ease-in-out infinite alternate;
+}
+
+.water-garden__ripple {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 1.5;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: garden-ripple 16s ease-in-out infinite;
+}
+
+.water-garden__ripple--later {
+  animation-delay: -8s;
+}
+
+button.water-garden__pad {
+  position: absolute;
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  pointer-events: auto;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button.water-garden__pad:hover {
+  background: rgb(255 255 255 / 5%);
+}
+
+button.water-garden__pad:focus-visible {
+  outline: 3px solid #3c7467;
+  outline-offset: -8px;
+  background: rgb(255 255 255 / 14%);
+  box-shadow: inset 0 0 0 11px rgb(244 255 250 / 65%);
+}
+
+button.water-garden__pad:disabled {
+  pointer-events: none;
+  opacity: 1;
+}
+
+.water-garden__touch-ring {
+  fill: none;
+  stroke: #6aabae;
+  stroke-width: 2.2;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: garden-touch-ripple 2.8s ease-out both;
+}
+
+.water-garden__touch-ring--echo {
+  stroke: #ffffff;
+  stroke-width: 2.8;
+  animation-delay: 300ms;
+}
+
+.water-garden[data-moving="false"] .water-garden__flow,
+.water-garden[data-moving="false"] .water-garden__ripple,
+.water-garden[data-moving="false"] .water-garden__sheen {
+  animation-play-state: paused;
+}
+
+@keyframes garden-current {
+  to { stroke-dashoffset: -998; }
+}
+
+@keyframes garden-sheen {
+  from { opacity: 0.06; transform: translate(-3px, -2px); }
+  to { opacity: 0.2; transform: translate(5px, 3px); }
+}
+
+@keyframes garden-ripple {
+  0% { opacity: 0; transform: scale(0.94); }
+  35% { opacity: 0.42; }
+  100% { opacity: 0; transform: scale(1.13); }
+}
+
+@keyframes garden-touch-ripple {
+  0% { opacity: 0; transform: scale(1); }
+  12% { opacity: 0.7; }
+  100% { opacity: 0; transform: scale(1.24); }
+}
+
+@media (max-width: 640px) {
+  .water-garden__scene {
+    left: 88%;
+    transform: translate(-88%, -50%);
+  }
+
+  .water-garden__flow--left { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Keep water automatic, with softer movement and slower highlights. */
+  .water-garden__flow { animation-duration: 90s; opacity: 0.32; }
+  .water-garden__flow--lower { animation-duration: 110s; }
+  .water-garden__sheen { animation: garden-sheen-soft 30s ease-in-out infinite alternate; }
+  .water-garden__ripple { animation-duration: 32s; }
+  .water-garden__touch-ring { animation-name: garden-touch-ripple-soft; }
+
+  @keyframes garden-sheen-soft {
+    from { opacity: 0.06; }
+    to { opacity: 0.12; }
+  }
+
+  @keyframes garden-touch-ripple-soft {
+    0% { opacity: 0; transform: scale(1); }
+    15% { opacity: 0.5; }
+    100% { opacity: 0; transform: scale(1.06); }
+  }
+}

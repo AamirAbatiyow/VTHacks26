@@ -9,6 +9,10 @@ export interface SessionConfig {
   age?: number;
   interests?: string[];
   targetPhoneme?: string;
+  /** Self-reported areas the user would like to practice. */
+  practiceGoals?: string[];
+  /** Optional context supplied during onboarding, up to 1,000 characters. */
+  needsDescription?: string;
 }
 
 /** Optional future speech-analysis metadata attached to a user turn. */

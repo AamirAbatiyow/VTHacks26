@@ -11,6 +11,7 @@ import {
 import { logger } from "../logger.js";
 import type { AppConfig } from "../config.js";
 import { decodeBinaryFrame, encodeBinaryFrame } from "./protocol.js";
+import { parseSessionConfig } from "./sessionConfig.js";
 import { ScribeTranscriber } from "../services/scribe.js";
 import { GeminiClient } from "../services/gemini.js";
 import { ElevenLabsStreamer } from "../services/elevenlabs.js";
@@ -172,9 +173,22 @@ export class VoiceSession {
 
   private async handleJson(msg: ClientJsonMessage): Promise<void> {
     switch (msg.type) {
-      case "start_session":
-        await this.startSession(msg.config ?? {});
+      case "start_session": {
+        let config: SessionConfig;
+        try {
+          config = parseSessionConfig(msg.config ?? {});
+        } catch (error) {
+          this.send({
+            type: "error",
+            code: "invalid_config",
+            message: error instanceof Error ? error.message : "Invalid session configuration.",
+            recoverable: true,
+          });
+          return;
+        }
+        await this.startSession(config);
         break;
+      }
       case "end_session":
         await this.cleanup("end_session");
         break;
