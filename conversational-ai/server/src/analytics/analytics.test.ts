@@ -7,7 +7,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { NoOpSpeechAnalyzer } from "../analysis/SpeechAnalyzer.js";
-import { validateStutteringAssessment, type StutteringAssessment } from "../analysis/StutteringAssessment.js";
+import { validateStutteringAssessment, stutterAnalysisToAssessment, type StutteringAssessment } from "../analysis/StutteringAssessment.js";
+import type { StutterAnalysis } from "../../../shared/events.js";
 
 test("projection excludes transcripts, audio, provider details, and free-form errors", () => {
   const projected = [
@@ -195,6 +196,102 @@ test("conversation reports store name, date, length and revision-safe category c
   } finally {
     if (tracker.status().queued > 0) await tracker.flush();
     // close() above is needed before opening a second database connection.
+    try { await tracker.close(); } catch { /* already closed */ }
+    rmSync(directory, { recursive: true });
+  }
+});
+
+
+/** All six real labels present, only the ones in `detected` flagged as such. */
+function makeAnalysis(detected: string[]): StutterAnalysis {
+  const labels = ["Prolongation", "Block", "SoundRep", "WordRep", "Interjection", "Fluent"];
+  return {
+    labels,
+    events: labels.map((label) => ({
+      label,
+      probability: detected.includes(label) ? 0.9 : 0.1,
+      detected: detected.includes(label),
+    })),
+    windows: [],
+    fluency: detected.includes("Fluent") ? 0.95 : 0.2,
+    analyzedMs: 3000,
+    inferenceMs: 42,
+  };
+}
+
+test("stutterAnalysisToAssessment maps detected labels to the correct fields only", () => {
+  // Fully fluent: every count zero, no-stuttered-words true.
+  const fluent = stutterAnalysisToAssessment(makeAnalysis(["Fluent"]));
+  validateStutteringAssessment(fluent);
+  assert.deepEqual(fluent, { ...clearAssessment, revision: 1 });
+
+  // SoundRep and WordRep specifically, to catch a swapped mapping.
+  const mixed = stutterAnalysisToAssessment(makeAnalysis(["SoundRep", "WordRep"]));
+  validateStutteringAssessment(mixed);
+  assert.equal(mixed.soundRepetition, 1);
+  assert.equal(mixed.wordRepetition, 1);
+  assert.equal(mixed.prolongation, 0);
+  assert.equal(mixed.block, 0);
+  assert.equal(mixed.interjection, 0);
+  assert.equal(mixed.noStutteredWords, false);
+
+  // A high-probability event that isn't flagged `detected` must not count.
+  const analysis = makeAnalysis([]);
+  analysis.events = analysis.events.map((e) => e.label === "Block" ? { ...e, probability: 0.99, detected: false } : e);
+  const notDetected = stutterAnalysisToAssessment(analysis);
+  assert.equal(notDetected.block, 0);
+  assert.equal(notDetected.noStutteredWords, true);
+
+  // An unrecognized label (e.g. a future model's extra output) is ignored, not thrown on.
+  const withUnknown = makeAnalysis(["Prolongation"]);
+  withUnknown.events.push({ label: "Mystery", probability: 0.8, detected: true });
+  const result = stutterAnalysisToAssessment(withUnknown);
+  validateStutteringAssessment(result);
+  assert.equal(result.prolongation, 1);
+  assert.equal(result.block, 0);
+
+  // revision defaults to 1, but can be overridden.
+  assert.equal(stutterAnalysisToAssessment(makeAnalysis([])).revision, 1);
+  assert.equal(stutterAnalysisToAssessment(makeAnalysis([]), 3).revision, 3);
+});
+
+test("real classifier detections reach the conversations/stuttering_utterances views end to end", async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "vocally-stutter-assessment-"));
+  const filename = path.join(directory, "analytics.sqlite");
+  const local = new LocalAnalyticsDatabase(filename);
+  const tracker = new AnalyticsTracker(local);
+  const session = "session-real-classifier";
+  try {
+    tracker.track(session, { type: "session_connected", properties: {} });
+    tracker.track(session, { type: "conversation_profile", properties: { name: "Real Model Child" } });
+    tracker.trackServerEvent(session, { type: "session_started", sessionId: session,
+      sampleRateIn: 16000, sampleRateOut: 24000 });
+    tracker.trackServerEvent(session, { type: "transcript_final", text: "unpersisted speech", turnId: "u1" });
+
+    // Exactly what session.ts's runSpeechAnalysis now does for a real, successful classification.
+    const analysis = makeAnalysis(["SoundRep", "WordRep"]);
+    tracker.trackStutteringAssessment(session, "u1", stutterAnalysisToAssessment(analysis));
+    await tracker.flush();
+
+    const row = local.db.prepare("SELECT * FROM conversations").get()!;
+    assert.equal(row.name, "Real Model Child");
+    assert.equal(row.analysis_status, "complete");
+    assert.equal(row.analyzed_utterances, 1);
+    assert.equal(row.prolongation_count, 0);
+    assert.equal(row.block_count, 0);
+    assert.equal(row.sound_repetition_count, 1);
+    assert.equal(row.word_repetition_count, 1);
+    assert.equal(row.interjection_count, 0);
+    assert.equal(row.no_stuttered_words_count, 0);
+
+    const utteranceRow = local.db.prepare(
+      "SELECT * FROM stuttering_utterances WHERE utterance_id = ?",
+    ).get("u1")!;
+    assert.equal(utteranceRow.sound_repetition_count, 1);
+    assert.equal(utteranceRow.word_repetition_count, 1);
+    assert.equal(utteranceRow.revision, 1);
+  } finally {
+    if (tracker.status().queued > 0) await tracker.flush();
     try { await tracker.close(); } catch { /* already closed */ }
     rmSync(directory, { recursive: true });
   }
