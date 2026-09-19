@@ -12,6 +12,7 @@ import {
 import { MicrophoneStream } from "../audio/recorder";
 import { StreamingAudioPlayer } from "../audio/player";
 import { EnergyVad } from "../audio/vad";
+import type { PracticeSession } from "../progress/practiceHistory";
 
 export interface TranscriptEntry {
   id: string;
@@ -84,7 +85,11 @@ const initialStatuses: ProviderStatuses = {
   elevenlabs: "idle",
 };
 
-export function useVoiceSession() {
+export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => void) {
+  const completionRef = useRef(onSessionComplete);
+  completionRef.current = onSessionComplete;
+  const practiceRef = useRef<(PracticeSession & { clockStart: number }) | null>(null);
+  const practiceModeRef = useRef<PracticeSession["mode"]>("default");
   const [state, setState] = useState<VoiceSessionState>({
     connected: false,
     sessionActive: false,
@@ -164,6 +169,13 @@ export function useVoiceSession() {
   }, []);
 
   const closeConnection = useCallback(() => {
+    // Record once, only after the server confirms a real session has started.
+    const practice = practiceRef.current;
+    practiceRef.current = null;
+    if (practice) {
+      const { clockStart, ...summary } = practice;
+      completionRef.current?.({ ...summary, seconds: Math.max(0, Math.round((performance.now() - clockStart) / 1000)) });
+    }
     sessionVersionRef.current += 1;
     startingRef.current = false;
     if (sessionReadyTimerRef.current) clearTimeout(sessionReadyTimerRef.current);
@@ -220,6 +232,10 @@ export function useVoiceSession() {
       ) return;
       switch (ev.type) {
         case "session_started":
+          if (!practiceRef.current) practiceRef.current = {
+            id: ev.sessionId, startedAt: new Date().toISOString(), seconds: 0,
+            turns: 0, mode: practiceModeRef.current, clockStart: performance.now(),
+          };
           startingRef.current = false;
           if (sessionReadyTimerRef.current) clearTimeout(sessionReadyTimerRef.current);
           sessionReadyTimerRef.current = null;
@@ -260,6 +276,7 @@ export function useVoiceSession() {
           setState((s) => ({ ...s, interimText: ev.text }));
           break;
         case "transcript_final":
+          if (practiceRef.current) practiceRef.current.turns += 1;
           setState((s) => ({
             ...s,
             interimText: "",
@@ -450,6 +467,7 @@ export function useVoiceSession() {
       const version = ++sessionVersionRef.current;
       const isCurrent = () => mountedRef.current && version === sessionVersionRef.current;
       startingRef.current = true;
+      practiceModeRef.current = config.conversationMode ?? "default";
       interruptedGenerationsRef.current.clear();
       setState((s) => ({
         ...s,

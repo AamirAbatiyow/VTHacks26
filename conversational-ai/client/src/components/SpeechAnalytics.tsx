@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { SessionConfig } from "@shared/events";
 import "./SpeechAnalytics.css";
+import { formatDuration, type PracticeSession } from "../progress/practiceHistory";
 
 type Entry = { id: string; date: string; pattern: string; sounds: string; situation: string; impact: string; notes: string };
 const patterns = ["Sound pronunciation", "Sound or word repetitions", "Prolonged sounds", "Blocks / difficulty starting", "Voice changes", "Other"];
@@ -12,7 +13,7 @@ function readEntries(key: string): Entry[] {
   } catch { return []; }
 }
 const dateToday = () => new Date().toLocaleDateString("en-CA");
-export function SpeechAnalytics({ profile, reportOpen, onReportClose }: { profile: SessionConfig; reportOpen: boolean; onReportClose: () => void }) {
+export function SpeechAnalytics({ profile, reportOpen, onReportClose, reportOnly = false, sessions = [] }: { profile: SessionConfig; reportOpen: boolean; onReportClose: () => void; reportOnly?: boolean; sessions?: PracticeSession[] }) {
   const storageKey = `vocally-speech-journal-v1:${encodeURIComponent(profile.childName ?? "")}:${profile.age ?? ""}`;
   const [entries, setEntries] = useState(() => readEntries(storageKey));
   const [notice, setNotice] = useState("");
@@ -26,8 +27,10 @@ export function SpeechAnalytics({ profile, reportOpen, onReportClose }: { profil
   }
   const counts = (field: "pattern" | "situation") => Object.entries(entries.reduce<Record<string, number>>((result, entry) => { result[entry[field]] = (result[entry[field]] ?? 0) + 1; return result; }, {})).sort((a, b) => b[1] - a[1]);
   const report = [
-    "VOCALLY — PRE-VISIT SPEECH SUMMARY", `Generated: ${new Date().toLocaleDateString()}`, `Patient: ${profile.childName || "Not provided"}`, `Age: ${profile.age ?? "Not provided"}`,
-    "", "SOURCE AND SCOPE", "Patient/caregiver-reported observations. Not a diagnosis, confirmed cause, or clinician assessment. This report does not send a referral.",
+    "VOCALLY — PRE-VISIT SPEECH SUMMARY", `Generated: ${new Date().toLocaleDateString()}`, `Patient: ${profile.childName || "Not provided"}`, `Role: ${profile.userRole ?? "Not provided"}`, ...(profile.age ? [`Age: ${profile.age}`] : []),
+    "", "SOURCE AND SCOPE", "Practice activity recorded by Vocally and any previously saved patient/caregiver observations. Not a diagnosis or clinician assessment. This report does not send a referral.",
+    "", "PRACTICE SUMMARY", `Sessions: ${sessions.length}`, `Total practice time: ${formatDuration(sessions.reduce((sum, session) => sum + session.seconds, 0))}`,
+    ...sessions.map(session => `${new Date(session.startedAt).toLocaleString()} | ${session.mode} | ${formatDuration(session.seconds)} | ${session.turns} speaking turns`),
     "", "PATIENT-REPORTED GOALS AND CONTEXT", `Goals: ${profile.practiceGoals?.join(", ") || "Not provided"}`, `Practice sound: ${profile.targetPhoneme || "Not provided"}`, `Context: ${profile.needsDescription || "Not provided"}`,
     "", `OBSERVATIONS (${entries.length} entries)`, "Counts describe logged entries, not the frequency or severity of a speech disorder.",
     ...counts("pattern").map(([label, count]) => `${label}: ${count} entries`),
@@ -40,6 +43,10 @@ export function SpeechAnalytics({ profile, reportOpen, onReportClose }: { profil
     const url = URL.createObjectURL(new Blob([report], { type: "text/plain;charset=utf-8" }));
     const link = document.createElement("a"); link.href = url; link.download = `vocally-pre-visit-report-${dateToday()}.txt`; document.body.append(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+  const reportDialog = (
+    <dialog ref={dialog} className="speech-report-dialog" aria-labelledby="report-title" onClose={onReportClose}><div className="detail-top"><span className="detail-brand">vocally</span><button className="close" aria-label="Close report" onClick={() => dialog.current?.close()}>✕</button></div><h2 id="report-title">Your pre-visit report</h2><p>Review your summary, then download it to share with your physician or SLP. Nothing is sent automatically.</p><button type="button" className="primary" onClick={download}>Download report ↓</button><pre>{report}</pre></dialog>
+  );
+  if (reportOnly) return reportDialog;
   return <section className="speech-analytics" aria-labelledby="analytics-title">
     <div className="section-heading"><h2 id="analytics-title">Speech analytics</h2><span>Your experiences, in your own words.</span></div>
     <p className="note">Track patterns, situations, and everyday impact. All entries here are self-reported and saved in this browser for this name and age.</p>
@@ -65,6 +72,6 @@ export function SpeechAnalytics({ profile, reportOpen, onReportClose }: { profil
     </form></details>
     <p role="status" className="note">{notice}</p>
     {entries.length > 0 && <details className="panel analytics-history"><summary>Observation history · {entries.length}</summary>{entries.map(entry => <article key={entry.id}><div><span className="note">{entry.date} · Self-reported</span><h4>{entry.pattern}{entry.sounds && ` — ${entry.sounds}`}</h4><p>{entry.situation} · {entry.impact}</p>{entry.notes && <p>{entry.notes}</p>}</div><button type="button" aria-label={`Delete observation from ${entry.date}: ${entry.pattern}`} onClick={() => save(entries.filter(item => item.id !== entry.id))}>Delete</button></article>)}</details>}
-    <dialog ref={dialog} className="speech-report-dialog" aria-labelledby="report-title" onClose={onReportClose}><div className="detail-top"><span className="detail-brand">vocally</span><button className="close" aria-label="Close report" onClick={() => dialog.current?.close()}>✕</button></div><h2 id="report-title">Your pre-visit report</h2><p>Review your summary, then download it to share with your physician or SLP. Nothing is sent automatically.</p><button type="button" className="primary" onClick={download}>Download report ↓</button><pre>{report}</pre></dialog>
+    {reportDialog}
   </section>;
 }

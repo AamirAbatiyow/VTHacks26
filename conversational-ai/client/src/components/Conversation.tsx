@@ -7,6 +7,7 @@ import { VoiceCaptions } from "./VoiceCaptions";
 import { SimulationGuide } from "./SimulationGuide";
 import { SimulationIcon } from "./SimulationIcon";
 import { useCameraPreview } from "../hooks/useCameraPreview";
+import type { PracticeSession } from "../progress/practiceHistory";
 import "./Conversation.css";
 
 const modes: { id: ConversationMode; name: string; detail: string; symbol: string }[] = [
@@ -22,8 +23,8 @@ const paceLabels: Record<CaptionPace, string> = { slow: "Slow", natural: "Natura
 const previewText = "Hello. Take a comfortable breath, and tell me about a small moment from your day. There’s no need to rush.";
 const guideKey = "vocally-simulation-guide-v1";
 
-export function Conversation({ initialConfig, onBack }: { initialConfig?: SessionConfig | null; onBack?: () => void }) {
-  const session = useVoiceSession();
+export function Conversation({ initialConfig, onBack, onSessionComplete }: { initialConfig?: SessionConfig | null; onBack?: () => void; onSessionComplete?: (entry: PracticeSession) => void }) {
+  const session = useVoiceSession(onSessionComplete);
   const camera = useCameraPreview();
   const [mode, setMode] = useState<ConversationMode>(initialConfig?.conversationMode ?? "default");
   const [pace, setPace] = useState<CaptionPace>("natural");
