@@ -21,7 +21,7 @@ export interface SessionConfig {
   age?: number;
   interests?: string[];
   targetPhoneme?: string;
-  /** Id from the server-reported availableStutterModels list; defaults to the server's configured default if omitted. */
+  /** Id from the GET /stutter-models list; defaults to the server's configured default if omitted. */
   stutterModel?: string;
   /** Self-reported areas the user would like to practice. */
   practiceGoals?: string[];
@@ -92,9 +92,6 @@ export interface SessionStartedEvent {
   sessionId: string;
   sampleRateIn: number;
   sampleRateOut: number;
-  /** Registered stutter models the client can pick from (see server analysis/modelRegistry.ts). */
-  availableStutterModels?: { id: string; label: string }[];
-  defaultStutterModel?: string;
 }
 
 export interface SessionEndedEvent {

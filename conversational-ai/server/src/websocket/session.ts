@@ -28,7 +28,7 @@ import {
 import { UtteranceCapture } from "../analysis/UtteranceCapture.js";
 import { pcm16ToSignal1d } from "../analysis/signal1d.js";
 import { StutterClassifier } from "../analysis/StutterClassifier.js";
-import { DEFAULT_STUTTER_MODEL_ID, STUTTER_MODELS } from "../analysis/modelRegistry.js";
+import { DEFAULT_STUTTER_MODEL_ID } from "../analysis/modelRegistry.js";
 
 /**
  * Fan-out microphone audio bus.
@@ -442,8 +442,6 @@ export class VoiceSession {
       sessionId: this.sessionId,
       sampleRateIn: AUDIO_SAMPLE_RATE_IN,
       sampleRateOut: AUDIO_SAMPLE_RATE_OUT,
-      availableStutterModels: STUTTER_MODELS.map(({ id, label }) => ({ id, label })),
-      defaultStutterModel: this.defaultStutterModelId,
     });
     logger.info("SESSION", "started");
   }
