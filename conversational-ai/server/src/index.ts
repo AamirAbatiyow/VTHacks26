@@ -35,7 +35,10 @@ async function main(): Promise<void> {
   );
 
   // One ONNX session shared by every connection — loading is lazy and cached.
-  const stutter = new StutterClassifier(config.stutterModelPath);
+  const stutter = new StutterClassifier(
+    config.stutterModelPath,
+    config.stutterGatePath,
+  );
 
   const app = express();
   const analyticsPool = config.databaseUrl ? createAnalyticsPool(config.databaseUrl) : null;

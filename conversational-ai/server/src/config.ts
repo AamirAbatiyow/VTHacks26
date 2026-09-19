@@ -27,6 +27,8 @@ export interface AppConfig {
   geminiModelPreference: string;
   /** ONNX stutter classifier; detection is skipped if the file is absent. */
   stutterModelPath: string;
+  /** Two-head binary gate; fluency falls back to the single-head model without it. */
+  stutterGatePath: string;
 }
 
 export function loadConfig(): AppConfig {
@@ -42,5 +44,8 @@ export function loadConfig(): AppConfig {
     stutterModelPath:
       process.env.STUTTER_MODEL_PATH?.trim() ||
       path.resolve(__dirname, "../models/stutter.onnx"),
+    stutterGatePath:
+      process.env.STUTTER_GATE_PATH?.trim() ||
+      path.resolve(__dirname, "../models/stutter_gate.onnx"),
   };
 }
