@@ -1,0 +1,281 @@
+:root {
+  color-scheme: light dark;
+  --bg: #0f1419;
+  --panel: #1a222c;
+  --border: #2c3a4a;
+  --text: #e7eef7;
+  --muted: #8b9bb0;
+  --accent: #3d8bfd;
+  --danger: #e35d6a;
+  --ok: #3ecf8e;
+  --pending: #f0c14a;
+  font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  line-height: 1.45;
+  background: var(--bg);
+  color: var(--text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.25rem 1.5rem 2rem;
+}
+
+header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.5rem;
+}
+
+.subtitle {
+  margin: 0 0 1rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.status-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  padding: 0.75rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.dot {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  margin-right: 0.35rem;
+  background: var(--muted);
+  vertical-align: middle;
+}
+.dot.ok {
+  background: var(--ok);
+}
+.dot.pending {
+  background: var(--pending);
+}
+.dot.err {
+  background: var(--danger);
+}
+
+.controls {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.config-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.config-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.config-grid .span-2 {
+  grid-column: span 2;
+}
+
+input {
+  padding: 0.45rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.buttons {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+button {
+  font: inherit;
+  padding: 0.5rem 0.9rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #243041;
+  color: var(--text);
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 600;
+}
+
+button.danger {
+  background: var(--danger);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 600;
+}
+
+.error-banner {
+  background: rgba(227, 93, 106, 0.15);
+  border: 1px solid var(--danger);
+  color: #ffb4bc;
+  padding: 0.65rem 0.85rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.main-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 800px) {
+  .main-grid,
+  .config-grid {
+    grid-template-columns: 1fr;
+  }
+  .config-grid .span-2 {
+    grid-column: span 1;
+  }
+}
+
+.transcript,
+.latency,
+.logs {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.transcript h2,
+.latency h2,
+.logs h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.turn {
+  margin-bottom: 0.85rem;
+}
+
+.role {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 0.15rem;
+}
+
+.turn-assistant .role {
+  color: var(--accent);
+}
+
+.text.interim,
+.text.streaming {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.interrupted {
+  color: var(--danger);
+  font-size: 0.85em;
+}
+
+.waveform {
+  margin-top: 0.45rem;
+}
+
+.waveform svg {
+  display: block;
+  background: #121922;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.waveform-axis {
+  stroke: #334155;
+  stroke-width: 1;
+}
+
+.waveform-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.waveform-meta {
+  margin-top: 0.2rem;
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 0.75rem;
+}
+
+.latency-block {
+  margin: 0;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.logs pre {
+  margin: 0;
+  max-height: 280px;
+  overflow: auto;
+  font-size: 0.72rem;
+  font-family: ui-monospace, monospace;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.echo-note {
+  margin-top: 1.25rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  padding-top: 0.85rem;
+}
