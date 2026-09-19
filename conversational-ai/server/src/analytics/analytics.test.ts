@@ -6,6 +6,8 @@ import { LocalAnalyticsDatabase } from "./local.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { NoOpSpeechAnalyzer } from "../analysis/SpeechAnalyzer.js";
+import { validateStutteringAssessment, type StutteringAssessment } from "../analysis/StutteringAssessment.js";
 
 test("projection excludes transcripts, audio, provider details, and free-form errors", () => {
   const projected = [
@@ -111,6 +113,89 @@ test("SQLite persists after reopen, deduplicates retries, and reports latest met
     assert.equal(local.db.prepare("SELECT turns FROM hourly_latency").get()?.turns, 1);
   } finally {
     await local.end();
+    rmSync(directory, { recursive: true });
+  }
+});
+
+const clearAssessment: StutteringAssessment = {
+  revision: 1, prolongation: 0, block: 0, soundRepetition: 0,
+  wordRepetition: 0, interjection: 0, noStutteredWords: true,
+};
+
+test("assessments reject invalid counts and contradictory no-stutter confirmations", async () => {
+  for (const value of [-1, 0.5, NaN, Infinity]) {
+    assert.throws(() => validateStutteringAssessment({ ...clearAssessment, block: value }));
+  }
+  assert.throws(() => validateStutteringAssessment({ ...clearAssessment, revision: 0 }));
+  assert.throws(() => validateStutteringAssessment({ ...clearAssessment, prolongation: 1 }));
+  assert.throws(() => validateStutteringAssessment({ ...clearAssessment, noStutteredWords: false }));
+  validateStutteringAssessment(clearAssessment);
+  const result = await new NoOpSpeechAnalyzer().analyze({ pcm16: Buffer.alloc(0), sampleRate: 16000 });
+  assert.equal(result.stuttering, undefined);
+});
+
+test("conversation reports store name, date, length and revision-safe category counts", async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "vocally-conversations-"));
+  const filename = path.join(directory, "analytics.sqlite");
+  const local = new LocalAnalyticsDatabase(filename);
+  const tracker = new AnalyticsTracker(local);
+  const session = "session-1";
+  const utterance = (id: string) => tracker.trackServerEvent(session, {
+    type: "transcript_final", text: "unpersisted speech", turnId: id,
+  });
+  try {
+    tracker.track(session, { type: "session_connected", properties: {} });
+    tracker.track(session, { type: "conversation_profile", properties: { name: "Test Child" } });
+    tracker.trackServerEvent(session, { type: "session_started", sessionId: session,
+      sampleRateIn: 16000, sampleRateOut: 24000 });
+    utterance("u1");
+    utterance("u2");
+    await tracker.flush();
+    let row = local.db.prepare("SELECT * FROM conversations").get()!;
+    assert.equal(row.name, "Test Child");
+    assert.equal(row.conversation_date, new Date().toISOString().slice(0, 10));
+    assert.equal(row.conversation_length_ms, null);
+    assert.equal(row.analysis_status, "not_analyzed");
+    assert.equal(row.prolongation_count, null);
+    assert.equal(row.no_stuttered_words_count, null);
+
+    const detected = { ...clearAssessment, prolongation: 2, block: 1, soundRepetition: 3,
+      wordRepetition: 4, interjection: 5, noStutteredWords: false };
+    tracker.trackStutteringAssessment(session, "u1", detected);
+    tracker.trackStutteringAssessment(session, "u1", detected); // retry
+    tracker.trackStutteringAssessment(session, "orphan", detected); // not a recorded utterance
+    await tracker.flush();
+    row = local.db.prepare("SELECT * FROM conversations").get()!;
+    assert.equal(row.analysis_status, "partial");
+    assert.equal(row.analyzed_utterances, 1);
+    assert.equal(row.prolongation_count, 2);
+
+    tracker.trackStutteringAssessment(session, "u1", { ...detected, revision: 2, prolongation: 1 });
+    tracker.trackStutteringAssessment(session, "u1", detected); // late stale result
+    tracker.trackStutteringAssessment(session, "u2", clearAssessment);
+    tracker.track(session, { type: "session_ended", properties: { durationMs: 6000, conversationDurationMs: 5000 } });
+    await tracker.flush();
+    row = local.db.prepare("SELECT * FROM conversations").get()!;
+    assert.equal(row.conversation_length_ms, 5000);
+    assert.equal(row.analysis_status, "complete");
+    assert.equal(row.analyzed_utterances, 2);
+    assert.equal(row.prolongation_count, 1);
+    assert.equal(row.block_count, 1);
+    assert.equal(row.sound_repetition_count, 3);
+    assert.equal(row.word_repetition_count, 4);
+    assert.equal(row.interjection_count, 5);
+    assert.equal(row.no_stuttered_words_count, 1);
+    assert.equal(JSON.stringify(local.db.prepare("SELECT * FROM events").all()).includes("unpersisted speech"), false);
+    await tracker.close();
+
+    // Re-running the schema upgrade preserves event history and report values.
+    const reopened = new LocalAnalyticsDatabase(filename);
+    try { assert.equal(reopened.db.prepare("SELECT prolongation_count FROM conversations").get()?.prolongation_count, 1); }
+    finally { await reopened.end(); }
+  } finally {
+    if (tracker.status().queued > 0) await tracker.flush();
+    // close() above is needed before opening a second database connection.
+    try { await tracker.close(); } catch { /* already closed */ }
     rmSync(directory, { recursive: true });
   }
 });

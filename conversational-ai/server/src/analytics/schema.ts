@@ -1,3 +1,5 @@
+import { conversationSchema } from "./conversationSchema.js";
+
 /** Idempotent schema; ordinary PostgreSQL also works for local development. */
 export const schemaSql = `
 CREATE SCHEMA IF NOT EXISTS analytics;
@@ -49,7 +51,7 @@ SELECT date_trunc('hour', occurred_at) AS hour, count(*) AS turns,
   avg(server_to_first_audio_ms) AS avg_server_to_first_audio_ms,
   percentile_cont(0.95) WITHIN GROUP (ORDER BY server_to_first_audio_ms) AS p95_server_to_first_audio_ms
 FROM analytics.turns GROUP BY 1;
-`;
+` + conversationSchema("postgres");
 
 export const hypertableSql = `
 CREATE EXTENSION IF NOT EXISTS timescaledb;

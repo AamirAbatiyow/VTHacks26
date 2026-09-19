@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { ServerJsonEvent } from "../../../shared/events.js";
 import { logger } from "../logger.js";
 import { projectEvent, type AnalyticsEvent } from "./events.js";
+import { validateStutteringAssessment, type StutteringAssessment } from "../analysis/StutteringAssessment.js";
 
 export interface AnalyticsDatabase {
   writeBatch(events: StoredEvent[]): Promise<void>;
@@ -51,6 +52,18 @@ export class AnalyticsTracker {
   trackServerEvent(sessionId: string, event: ServerJsonEvent): void {
     const projected = projectEvent(event);
     if (projected) this.track(sessionId, projected);
+  }
+
+  /** Identification loops submit a full snapshot per utterance, not count deltas. */
+  trackStutteringAssessment(sessionId: string, utteranceId: string, result: StutteringAssessment): void {
+    if (!utteranceId.trim()) throw new Error("An utterance ID is required.");
+    validateStutteringAssessment(result);
+    this.track(sessionId, { type: "stuttering_assessment", properties: {
+      utteranceId, revision: result.revision,
+      prolongation: result.prolongation, block: result.block,
+      soundRepetition: result.soundRepetition, wordRepetition: result.wordRepetition,
+      interjection: result.interjection, noStutteredWords: result.noStutteredWords ? 1 : 0,
+    } });
   }
 
   flush(): Promise<void> {
