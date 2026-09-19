@@ -6,6 +6,9 @@ import { loadConfig } from "./config.js";
 import { logger } from "./logger.js";
 import { GeminiClient } from "./services/gemini.js";
 import { VoiceSession } from "./websocket/session.js";
+import { AnalyticsTracker } from "./analytics/AnalyticsTracker.js";
+import { createAnalyticsPool, postgresAnalyticsDatabase } from "./analytics/database.js";
+import { LocalAnalyticsDatabase, localDatabasePath } from "./analytics/local.js";
 
 async function main(): Promise<void> {
   let config;
@@ -31,10 +34,17 @@ async function main(): Promise<void> {
   );
 
   const app = express();
+  const analyticsPool = config.databaseUrl ? createAnalyticsPool(config.databaseUrl) : null;
+  analyticsPool?.on("error", () => logger.warn("ANALYTICS", "Idle database connection failed."));
+  const analytics = new AnalyticsTracker(analyticsPool
+    ? postgresAnalyticsDatabase(analyticsPool) : new LocalAnalyticsDatabase());
+  logger.info("ANALYTICS", analyticsPool ? "PostgreSQL tracking enabled; run db:migrate to initialize." : `Local SQLite tracking: ${localDatabasePath()}`);
+  const sessions = new Set<VoiceSession>();
   app.use(cors());
   app.get("/health", (_req, res) => {
     res.json({
       ok: true,
+      analytics: analytics.status(),
       geminiModel: gemini.getModel(),
       elevenLabsModel: config.elevenLabsModelId,
     });
@@ -45,7 +55,9 @@ async function main(): Promise<void> {
 
   wss.on("connection", (ws) => {
     try {
-      const session = new VoiceSession(ws, config, gemini);
+      const session = new VoiceSession(ws, config, gemini, analytics);
+      sessions.add(session);
+      ws.once("close", () => sessions.delete(session));
       session.attach();
     } catch (err) {
       logger.error("SESSION", "failed to create session", String(err));
@@ -67,11 +79,19 @@ async function main(): Promise<void> {
     logger.info("GEMINI", `model=${gemini.getModel()}`);
   });
 
-  const shutdown = () => {
+  let shuttingDown = false;
+  const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     logger.info("SESSION", "shutting down");
+    const deadline = setTimeout(() => process.exit(1), 12000);
+    deadline.unref();
     wss.close();
-    server.close(() => process.exit(0));
-    setTimeout(() => process.exit(1), 5000).unref();
+    server.close();
+    await Promise.allSettled([...sessions].map((session) => session.cleanup("server_shutdown")));
+    await analytics.close();
+    clearTimeout(deadline);
+    process.exit(0);
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
