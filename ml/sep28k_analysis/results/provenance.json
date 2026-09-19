@@ -1,0 +1,31 @@
+{
+  "generated_at_utc": "2026-09-19T15:31:15.953453+00:00",
+  "source_repository": "https://github.com/apple-aiml-research/ml-stuttering-events-dataset",
+  "files": {
+    "LICENSE.md": {
+      "sha256": "03ad4ed5e370d432460e38ef03789f21ee5c1f39ab4b4fd5913bad6a4543f2ef",
+      "url": "https://raw.githubusercontent.com/apple-aiml-research/ml-stuttering-events-dataset/main/LICENSE.md"
+    },
+    "SEP-28k_episodes.csv": {
+      "sha256": "7be79cb5de25a672ec9034f220ea0f126e2b23dbd01aeb7ab69e83354d7bc366",
+      "url": "https://raw.githubusercontent.com/apple-aiml-research/ml-stuttering-events-dataset/main/SEP-28k_episodes.csv"
+    },
+    "SEP-28k_labels.csv": {
+      "sha256": "d83a782f6bcf3e31b3c951515d1cd0e51351fce76251944cbb8c87ec3af8b425",
+      "url": "https://raw.githubusercontent.com/apple-aiml-research/ml-stuttering-events-dataset/main/SEP-28k_labels.csv"
+    },
+    "upstream_README.md": {
+      "sha256": "564c6b36b673b5b91b3418df1a42dd77b3c30e39b6c3b33e81c61b3aec55938f",
+      "url": "https://raw.githubusercontent.com/apple-aiml-research/ml-stuttering-events-dataset/main/README.md"
+    },
+    "upstream_extract_clips.py": {
+      "sha256": "4fbf227bcd010134af8df1ae9a431726d3a0eddf52d5ea68317a0a5d8c538cd7",
+      "url": "https://raw.githubusercontent.com/apple-aiml-research/ml-stuttering-events-dataset/main/extract_clips.py"
+    }
+  },
+  "versions": {
+    "numpy": "2.5.3",
+    "pandas": "3.0.6",
+    "matplotlib": "3.11.2"
+  }
+}

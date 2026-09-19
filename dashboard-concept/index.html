@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f4ec">
+  <title>Vocally — Your growth, at your pace</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <a class="wordmark" href="./" aria-label="Vocally home">
+        <svg viewBox="445 370 640 215" role="img" aria-label="Vocally"><defs><filter id="ink" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 0 0 .208 0 0 0 0 .353 0 0 0 0 .314 0 0 20 0 -17.7"/></filter></defs><image href="assets/vocally-artwork.png" width="1448" height="1086" filter="url(#ink)"/></svg>
+      </a>
+      <span class="header-note">A LITTLE PRACTICE. A LITTLE POSSIBILITY.</span>
+      <a id="practice-link" class="practice-link" href="http://localhost:5173"><span class="sound-icon" aria-hidden="true">ıııı</span> Let's practice <span aria-hidden="true">↗</span></a>
+    </header>
+
+    <main>
+      <section class="welcome" aria-labelledby="welcome-title">
+        <div class="welcome-copy">
+          <div class="eyebrow"><span class="live-dot"></span> YOUR SPACE TO GROW <span class="today" id="today"></span></div>
+          <h1 id="welcome-title">Hello, <button id="edit-name" aria-label="Edit your profile name"><span id="user-name">Alex</span><span class="name-dot">.</span></button><br>Your voice is <em>growing.</em></h1>
+          <p>Little moments of practice. Real reasons to feel proud.<br>Watch your progress unfold, one day at a time.</p>
+          <div class="welcome-footer"><span class="small-flower" aria-hidden="true">✳</span> At your pace. In your own voice.</div>
+        </div>
+        <div class="garden" aria-hidden="true">
+          <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+          <svg class="flower-art" viewBox="0 0 360 360" fill="none">
+            <path d="M182 296C184 245 167 193 179 132" stroke="#476252" stroke-width="3"/>
+            <path d="M181 249C129 252 99 220 105 206C141 197 171 216 181 249Z" fill="#7d916a"/>
+            <path d="M180 217C185 180 218 164 239 175C235 206 211 221 180 217Z" fill="#b1bf90"/>
+            <g fill="#cac6e1" stroke="#aaa3c6" stroke-width="1.2">
+              <ellipse cx="180" cy="99" rx="27" ry="48" transform="rotate(-5 180 137)"/>
+              <ellipse cx="180" cy="99" rx="27" ry="48" transform="rotate(55 180 137)"/>
+              <ellipse cx="180" cy="99" rx="27" ry="48" transform="rotate(115 180 137)"/>
+              <ellipse cx="180" cy="99" rx="27" ry="48" transform="rotate(175 180 137)"/>
+              <ellipse cx="180" cy="99" rx="27" ry="48" transform="rotate(235 180 137)"/>
+              <ellipse cx="180" cy="99" rx="27" ry="48" transform="rotate(295 180 137)"/>
+            </g>
+            <circle cx="180" cy="137" r="23" fill="#f0d88c"/><circle cx="180" cy="137" r="15" stroke="#c0a85f" stroke-dasharray="1 5"/>
+            <ellipse cx="180" cy="303" rx="69" ry="8" fill="#dfe3d3"/>
+          </svg>
+          <span class="garden-tag"><span>✧</span> Every small step counts</span>
+          <span class="spark spark-one">✧</span><span class="spark spark-two">+</span>
+        </div>
+      </section>
+
+      <section class="dashboard" aria-labelledby="dashboard-title">
+        <div class="section-heading"><h2 id="dashboard-title">Your everyday, a little brighter</h2><span>Pick a card. See how far you've come. <span aria-hidden="true">↓</span></span></div>
+        <div class="cards" id="cards"></div>
+      </section>
+      <footer><span><span class="live-dot"></span> A space for progress, never perfection.</span><button id="edit-profile">Demo profile <span aria-hidden="true">↗</span></button></footer>
+    </main>
+  </div>
+  <dialog id="detail-dialog" class="detail-dialog" aria-labelledby="detail-title">
+    <div class="detail-shell"><div class="detail-top"><span class="detail-brand">vocally</span><button id="close-detail" class="close" aria-label="Close expanded card">✕</button></div><div id="detail-content"></div></div>
+  </dialog>
+  <dialog id="profile-dialog" class="profile-dialog" aria-labelledby="profile-title">
+    <form id="profile-form"><h2 id="profile-title">Make this space yours.</h2><p>This separate concept uses demo data. Changes stay in this browser.</p><label>Your first name<input id="name-input" name="name" maxlength="28" required autocomplete="given-name"></label><label>Vocally practice URL<input id="practice-input" name="practiceUrl" type="url" required></label><div class="form-actions"><button type="button" id="cancel-profile">Cancel</button><button type="submit" class="primary">Save profile ↗</button></div></form>
+  </dialog>
+  <div class="toast" id="toast" role="status"></div>
+</body>
+</html>
