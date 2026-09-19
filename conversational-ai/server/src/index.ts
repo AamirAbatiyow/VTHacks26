@@ -6,6 +6,7 @@ import { loadConfig } from "./config.js";
 import { logger } from "./logger.js";
 import { GeminiClient } from "./services/gemini.js";
 import { VoiceSession } from "./websocket/session.js";
+import { StutterClassifier } from "./analysis/StutterClassifier.js";
 import { AnalyticsTracker } from "./analytics/AnalyticsTracker.js";
 import { createAnalyticsPool, postgresAnalyticsDatabase } from "./analytics/database.js";
 import { LocalAnalyticsDatabase, localDatabasePath } from "./analytics/local.js";
@@ -33,6 +34,9 @@ async function main(): Promise<void> {
     config.geminiModelPreference,
   );
 
+  // One ONNX session shared by every connection — loading is lazy and cached.
+  const stutter = new StutterClassifier(config.stutterModelPath);
+
   const app = express();
   const analyticsPool = config.databaseUrl ? createAnalyticsPool(config.databaseUrl) : null;
   analyticsPool?.on("error", () => logger.warn("ANALYTICS", "Idle database connection failed."));
@@ -55,7 +59,7 @@ async function main(): Promise<void> {
 
   wss.on("connection", (ws) => {
     try {
-      const session = new VoiceSession(ws, config, gemini, analytics);
+      const session = new VoiceSession(ws, config, gemini, stutter, analytics);
       sessions.add(session);
       ws.once("close", () => sessions.delete(session));
       session.attach();

@@ -25,6 +25,8 @@ export interface AppConfig {
   elevenLabsModelId: string;
   /** Preferred Gemini model; resolved further at runtime if unavailable. */
   geminiModelPreference: string;
+  /** ONNX stutter classifier; detection is skipped if the file is absent. */
+  stutterModelPath: string;
 }
 
 export function loadConfig(): AppConfig {
@@ -37,5 +39,8 @@ export function loadConfig(): AppConfig {
     elevenLabsModelId: process.env.ELEVENLABS_MODEL_ID?.trim() || "eleven_flash_v2_5",
     geminiModelPreference:
       process.env.GEMINI_MODEL?.trim() || "gemini-3.5-flash-lite",
+    stutterModelPath:
+      process.env.STUTTER_MODEL_PATH?.trim() ||
+      path.resolve(__dirname, "../models/stutter.onnx"),
   };
 }

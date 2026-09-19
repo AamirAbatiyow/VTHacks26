@@ -1,5 +1,6 @@
 import type { TranscriptEntry } from "../hooks/useVoiceSession";
 import { Waveform } from "./Waveform";
+import { StutterPanel } from "./StutterPanel";
 
 interface Props {
   entries: TranscriptEntry[];
@@ -29,6 +30,9 @@ export function Transcript({
           </div>
           {e.role === "user" && e.signal ? (
             <Waveform signal={e.signal} />
+          ) : null}
+          {e.role === "user" && e.stutter ? (
+            <StutterPanel analysis={e.stutter} />
           ) : null}
         </div>
       ))}

@@ -696,6 +696,106 @@ button.danger {
   color: var(--muted);
 }
 
+.stutter {
+  margin-top: 0.5rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgb(0 0 0 / 8%);
+}
+
+.stutter-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.45rem;
+}
+
+.stutter-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.stutter-meta,
+.stutter-clear {
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.stutter-clear {
+  margin-bottom: 0.4rem;
+}
+
+.stutter-bars {
+  display: grid;
+  gap: 0.22rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stutter-row {
+  display: grid;
+  grid-template-columns: 8.5rem 1fr 2.2rem;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.stutter-row.is-detected {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.stutter-track {
+  height: 0.4rem;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 12%);
+  overflow: hidden;
+}
+
+.stutter-fill {
+  display: block;
+  height: 100%;
+  background: var(--muted);
+}
+
+.stutter-row.is-detected .stutter-fill {
+  background: var(--danger);
+}
+
+.stutter-value {
+  font-family: ui-monospace, monospace;
+  text-align: right;
+}
+
+.stutter-timeline {
+  display: flex;
+  gap: 2px;
+  margin-top: 0.45rem;
+}
+
+.stutter-tick {
+  flex: 1;
+  height: 0.35rem;
+  border-radius: 2px;
+  background: var(--danger);
+}
+
+.practice-workspace .stutter {
+  background: #f1f7f4;
+}
+
+.practice-workspace .stutter-track {
+  background: #d8e5df;
+}
+
 .muted {
   color: var(--muted);
 }

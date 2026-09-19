@@ -116,6 +116,38 @@ export interface TranscriptFinalEvent {
   signal?: SpeechSignal;
 }
 
+/** One 3 s analysis window scored by the stutter classifier. */
+export interface StutterWindow {
+  startMs: number;
+  endMs: number;
+  /** Probabilities aligned with StutterAnalysis.labels. */
+  scores: number[];
+}
+
+export interface StutterEventScore {
+  label: string;
+  /** Max probability across windows, 0-1. */
+  probability: number;
+  /** probability >= the per-label threshold tuned on the validation set. */
+  detected: boolean;
+}
+
+export interface StutterAnalysis {
+  labels: string[];
+  events: StutterEventScore[];
+  windows: StutterWindow[];
+  /** Model's confidence the utterance is fluent, 0-1. */
+  fluency: number;
+  analyzedMs: number;
+  inferenceMs: number;
+}
+
+export interface StutterAnalysisEvent {
+  type: "stutter_analysis";
+  turnId: string;
+  analysis: StutterAnalysis;
+}
+
 export interface AssistantTextDeltaEvent {
   type: "assistant_text_delta";
   generationId: string;
@@ -176,6 +208,7 @@ export type ServerJsonEvent =
   | UserSpeechEndedEvent
   | TranscriptInterimEvent
   | TranscriptFinalEvent
+  | StutterAnalysisEvent
   | AssistantTextDeltaEvent
   | AssistantTextFinalEvent
   | AssistantSpeechStartedEvent
