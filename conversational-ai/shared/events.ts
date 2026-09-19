@@ -9,6 +9,8 @@ export interface SessionConfig {
   age?: number;
   interests?: string[];
   targetPhoneme?: string;
+  /** Id from the server-reported availableStutterModels list; defaults to the server's configured default if omitted. */
+  stutterModel?: string;
 }
 
 /** Optional future speech-analysis metadata attached to a user turn. */
@@ -74,6 +76,9 @@ export interface SessionStartedEvent {
   sessionId: string;
   sampleRateIn: number;
   sampleRateOut: number;
+  /** Registered stutter models the client can pick from (see server analysis/modelRegistry.ts). */
+  availableStutterModels?: { id: string; label: string }[];
+  defaultStutterModel?: string;
 }
 
 export interface SessionEndedEvent {

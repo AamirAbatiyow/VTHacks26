@@ -8,3 +8,13 @@ build/
 coverage/
 *.tsbuildinfo
 .vite/
+
+# Open-source model exports — too big for git (GitHub blocks pushes over
+# 100MB without Git LFS; this one runs ~1.2GB). Keep the small custom CNN
+# (stutter.onnx/.json) tracked as-is; anything else in models/ is a
+# regenerate-locally artifact — see ml/stutter/export_onnx_vocametrix.py
+# and ml/stutter/export_onnx.py.
+server/models/*.onnx
+server/models/*.json
+!server/models/stutter.onnx
+!server/models/stutter.json

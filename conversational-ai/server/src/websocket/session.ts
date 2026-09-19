@@ -24,7 +24,8 @@ import {
 } from "../analysis/SpeechAnalyzer.js";
 import { UtteranceCapture } from "../analysis/UtteranceCapture.js";
 import { pcm16ToSignal1d } from "../analysis/signal1d.js";
-import type { StutterClassifier } from "../analysis/StutterClassifier.js";
+import { StutterClassifier } from "../analysis/StutterClassifier.js";
+import { DEFAULT_STUTTER_MODEL_ID, STUTTER_MODELS } from "../analysis/modelRegistry.js";
 
 /**
  * Fan-out microphone audio bus.
@@ -68,7 +69,9 @@ export class VoiceSession {
   private readonly micBus = new MicrophoneAudioBus();
   private readonly audioClock = new AudioClock(AUDIO_SAMPLE_RATE_IN);
   private readonly speechAnalyzer: SpeechAnalyzer;
-  private readonly stutter: StutterClassifier | null;
+  /** null when an explicit analyzer override was passed (tests / future analyzers). */
+  private readonly stutterModels: Map<string, StutterClassifier> | null;
+  private readonly defaultStutterModelId: string;
 
   private readonly utterance = new UtteranceCapture();
   private sessionConfig: SessionConfig = {};
@@ -81,7 +84,7 @@ export class VoiceSession {
     ws: WebSocket,
     config: AppConfig,
     gemini: GeminiClient,
-    stutter?: StutterClassifier,
+    stutterModels?: Map<string, StutterClassifier>,
     private readonly analytics?: AnalyticsTracker,
     analyzer?: SpeechAnalyzer,
   ) {
@@ -90,8 +93,29 @@ export class VoiceSession {
     this.ws = ws;
     this.config = config;
     this.gemini = gemini;
-    this.stutter = analyzer ? null : stutter ?? null;
-    this.speechAnalyzer = analyzer ?? stutter ?? new NoOpSpeechAnalyzer();
+    this.defaultStutterModelId = config.defaultStutterModelId ?? DEFAULT_STUTTER_MODEL_ID;
+    this.stutterModels = analyzer ? null : stutterModels ?? null;
+    // Fallback SpeechAnalyzer used only if no stutter model map was supplied at all
+    // (e.g. tests). Normal operation always resolves through `this.stutter` below.
+    this.speechAnalyzer = analyzer ?? new NoOpSpeechAnalyzer();
+  }
+
+  /**
+   * The active stutter model for THIS session, resolved fresh from
+   * sessionConfig.stutterModel every call — so a client can switch models
+   * (e.g. via a dropdown) by sending a new start_session config without a
+   * server restart. Falls back to the server default, then to whatever the
+   * first registered model is, if the requested id is unknown.
+   */
+  private get stutter(): StutterClassifier | null {
+    if (!this.stutterModels || this.stutterModels.size === 0) return null;
+    const requested = this.sessionConfig.stutterModel;
+    return (
+      (requested && this.stutterModels.get(requested)) ||
+      this.stutterModels.get(this.defaultStutterModelId) ||
+      this.stutterModels.values().next().value ||
+      null
+    );
   }
 
   attach(): void {
@@ -402,6 +426,8 @@ export class VoiceSession {
       sessionId: this.sessionId,
       sampleRateIn: AUDIO_SAMPLE_RATE_IN,
       sampleRateOut: AUDIO_SAMPLE_RATE_OUT,
+      availableStutterModels: STUTTER_MODELS.map(({ id, label }) => ({ id, label })),
+      defaultStutterModel: this.defaultStutterModelId,
     });
     logger.info("SESSION", "started");
   }

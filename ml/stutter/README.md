@@ -113,6 +113,42 @@ step asserts PyTorch and ONNX agree to within 1e-3.
 A sidecar `stutter.json` carries the label order, sample rate, and tuned
 thresholds.
 
+## Export — vocametrix (open-source comparison model)
+
+`vocametrix/wav2vec2-xlsr-53-stuttering-classification` (see `vocametrix.py`,
+`eval_vocametrix.py`) can be exported to the *same* ONNX contract as our CNN,
+so the Node server treats it as just another registered model — same
+`waveform -> logits` I/O, same sidecar `.json` shape, zero server code
+differences:
+
+```bash
+../.venv/bin/python export_onnx_vocametrix.py \
+  --data /path/to/sep28k_data \
+  --out ../../conversational-ai/server/models/stutter_vocametrix.onnx
+```
+
+vocametrix is single-label softmax (6 mutually exclusive classes), not
+multi-label like the CNN. The export bakes softmax -> inverse-sigmoid into
+the graph (`logit = ln(p / (1-p))`) so `sigmoid(logits)` reproduces its
+softmax probabilities exactly — `StutterClassifier.ts` doesn't need to know
+which activation a given model natively uses. Its native window is 4s
+(64000 samples @ 16kHz) rather than the CNN's 3s; that's carried in the
+sidecar `.json`'s `clipSamples` and the server reads it generically, so no
+code change is needed for the different window size.
+
+Before trusting the export, the script re-runs a handful of val clips
+through both the exported graph *and* `vocametrix.py`'s own HF pipeline and
+asserts they agree to 1e-3 — catches any mismatch in the hand-rolled
+zero-mean/unit-variance normalization immediately instead of shipping a
+silently-wrong model. Pass `--data` to also tune per-label thresholds on the
+val split (same procedure `train.py` uses for the CNN); omit it to write
+default 0.5 thresholds you can hand-edit later in `stutter_vocametrix.json`.
+
+Once exported, it's live in the app immediately: `modelRegistry.ts` already
+lists a `vocametrix` entry pointing at this file, so it appears in the
+client's model dropdown / is selectable via `STUTTER_MODEL=vocametrix` with
+no further edits.
+
 ## Trying it on a file
 
 ```bash
