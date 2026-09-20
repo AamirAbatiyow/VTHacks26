@@ -76,7 +76,7 @@ Open http://localhost:5173
 
 Vite proxies `/ws` → `ws://localhost:3001/ws`.
 
-## Analytics: local SQLite, optional Tiger Data PostgreSQL
+## Record storage: Tiger Data PostgreSQL or local SQLite
 
 The server records session IDs, the profile name, conversation date and duration,
 utterance word/character counts and audio duration, assistant responses by count,
@@ -105,10 +105,14 @@ Small transactions run once per second; local SQLite writes are synchronous and
 may briefly occupy the server event loop. The local report includes average
 latencies; the PostgreSQL hourly view additionally computes p95 latency.
 
-### Optional: create and connect Tiger Data later
+### Tiger Data PostgreSQL
 
 Setting `DATABASE_URL` switches new writes to PostgreSQL; it does not copy existing
 SQLite history. The local file remains available for inspection.
+The server initializes the PostgreSQL tables and reporting views before accepting
+connections. If initialization fails, startup stops with a configuration error
+instead of accepting records that cannot be saved. Credentials belong only in
+the ignored `server/.env` file. Restart the server after changing the connection.
 
 1. Sign in to [Tiger Cloud](https://console.cloud.tigerdata.com/) and create a
    PostgreSQL service with TimescaleDB enabled. Choose a region near your server.
@@ -123,7 +127,12 @@ SQLite history. The local file remains available for inspection.
    Use the actual host, port, database, and credentials from Tiger Cloud. URL-encode
    special characters in passwords. TLS defaults to certificate verification for
    remote hosts; localhost defaults to no TLS. Keep this URL server-side.
-4. From `conversational-ai/`, initialize the schema and hypertable:
+   For a TigerData service using a self-signed certificate, its default encrypted
+   connection mode can be selected with `?sslmode=require&uselibpqcompat=true`.
+   This encrypts traffic without verifying the server certificate. Use
+   `sslmode=verify-full` when a trusted certificate is available.
+4. From `conversational-ai/`, enable the optional TimescaleDB hypertable (ordinary
+   PostgreSQL tables and views are also initialized automatically at startup):
 
    ```bash
    npm run db:migrate -- --timescale

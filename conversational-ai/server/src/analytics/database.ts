@@ -1,5 +1,21 @@
 import { Pool } from "pg";
 import type { AnalyticsDatabase } from "./AnalyticsTracker.js";
+import { schemaSql, hypertableSql } from "./schema.js";
+
+/** Initialize storage before accepting records; serialize concurrent server starts. */
+export async function initializeAnalyticsDatabase(pool: Pool, timescale = false): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(724018263)");
+    await client.query(schemaSql);
+    if (timescale) await client.query(hypertableSql);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally { client.release(); }
+}
 
 export function postgresAnalyticsDatabase(pool: Pool): AnalyticsDatabase {
   return {

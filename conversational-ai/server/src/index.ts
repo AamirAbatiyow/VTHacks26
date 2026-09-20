@@ -9,7 +9,7 @@ import { VoiceSession } from "./websocket/session.js";
 import { StutterClassifier } from "./analysis/StutterClassifier.js";
 import { STUTTER_MODELS } from "./analysis/modelRegistry.js";
 import { AnalyticsTracker } from "./analytics/AnalyticsTracker.js";
-import { createAnalyticsPool, postgresAnalyticsDatabase } from "./analytics/database.js";
+import { createAnalyticsPool, initializeAnalyticsDatabase, postgresAnalyticsDatabase } from "./analytics/database.js";
 import { LocalAnalyticsDatabase, localDatabasePath } from "./analytics/local.js";
 
 async function main(): Promise<void> {
@@ -50,9 +50,17 @@ async function main(): Promise<void> {
   const app = express();
   const analyticsPool = config.databaseUrl ? createAnalyticsPool(config.databaseUrl) : null;
   analyticsPool?.on("error", () => logger.warn("ANALYTICS", "Idle database connection failed."));
+  if (analyticsPool) {
+    try {
+      await initializeAnalyticsDatabase(analyticsPool);
+    } catch {
+      await analyticsPool.end();
+      throw new Error("Database initialization failed. Check DATABASE_URL, connectivity and database permissions.");
+    }
+  }
   const analytics = new AnalyticsTracker(analyticsPool
     ? postgresAnalyticsDatabase(analyticsPool) : new LocalAnalyticsDatabase());
-  logger.info("ANALYTICS", analyticsPool ? "PostgreSQL tracking enabled; run db:migrate to initialize." : `Local SQLite tracking: ${localDatabasePath()}`);
+  logger.info("ANALYTICS", analyticsPool ? "PostgreSQL record storage ready." : `Local SQLite tracking: ${localDatabasePath()}`);
   const sessions = new Set<VoiceSession>();
   app.use(cors());
   app.get("/stutter-models", (_req, res) => {
