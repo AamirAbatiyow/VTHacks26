@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import artwork from "../assets/speech-therapy-artwork.png";
 import backdrop from "../assets/speech-therapy-background.png";
+import { playSfx } from "../audio/sfx";
 
 type Phase = "loading" | "entering" | "ready" | "leaving";
 
@@ -67,6 +68,7 @@ export function IntroScreen({ onExitStart, onExited }: Props) {
   const enterPractice = useCallback(() => {
     if (exitStarted.current) return;
     exitStarted.current = true;
+    playSfx("whoosh");
     setPhase("leaving");
     onExitStart();
   }, [onExitStart]);

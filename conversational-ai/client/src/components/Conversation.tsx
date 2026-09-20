@@ -11,6 +11,7 @@ import { useCameraPreview } from "../hooks/useCameraPreview";
 import { formatDuration, formatPracticeMode } from "../progress/practiceHistory";
 import type { PracticeSession } from "../progress/practiceHistory";
 import { ANALYSIS_LABELS, ANALYSIS_NAMES } from "@shared/sessionSummary";
+import { playSfx } from "../audio/sfx";
 import "./Conversation.css";
 
 type CaptionPace = "slow" | "natural" | "quick";
@@ -97,6 +98,7 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
   const paceRef = useRef<HTMLDivElement>(null);
   const paceButton = useRef<HTMLButtonElement>(null);
   const startButton = useRef<HTMLButtonElement>(null);
+  const settledId = useRef<string | null>(null);
   const busy = session.sessionActive || session.isStarting || session.connected || session.isEnding;
   const selectedMode = modes.find(item => item.id === mode)!;
   const selectedExercise = recommendation?.options.find(item => item.id === technique);
@@ -127,6 +129,7 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
     if (!session.praiseCue || session.praiseCueId < 1) return;
     const id = session.praiseCueId;
     const text = session.praiseCue;
+    playSfx("sparkle");
     setPraises((list) => [...list, { id, text }]);
     const timer = window.setTimeout(() => {
       setPraises((list) => list.filter((item) => item.id !== id));
@@ -187,10 +190,21 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
   }, [paceOpen]);
 
   useEffect(() => {
-    if (tourOpen) setSidebarOpen(true);
+    if (tourOpen) {
+      setSidebarOpen(true);
+      playSfx("whoosh");
+    }
   }, [tourOpen]);
 
+  useEffect(() => {
+    if (!completed || busy) return;
+    if (settledId.current === completed.id) return;
+    settledId.current = completed.id;
+    playSfx("settle");
+  }, [completed, busy]);
+
   const dismissTour = useCallback(() => {
+    playSfx("step");
     try { localStorage.setItem(guideKey, "done"); } catch { /* Dismiss for this visit even if storage is unavailable. */ }
     setTourOpen(false);
     window.requestAnimationFrame(() => startButton.current?.focus());
@@ -227,6 +241,7 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
     setHasPreview(false);
     if (busy) { camera.stop(); await session.endConversation(); return; }
     if (!canStart) return;
+    playSfx("begin");
     setCompleted(null);
     setPraises([]);
     setTips(null);
@@ -240,7 +255,12 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
       sessionMinutes: mode === "conversation" ? sessionMinutes ?? undefined : undefined,
     });
   }
-  async function returnToDashboard() { camera.stop(); await session.endConversation(); onBack?.(); }
+  async function returnToDashboard() {
+    playSfx("step");
+    camera.stop();
+    await session.endConversation();
+    onBack?.();
+  }
 
   return (
     <div className="therapy-simulation" id="conversation" data-sidebar={sidebarOpen ? "open" : "closed"} data-mode={mode} tabIndex={-1}>
@@ -254,7 +274,7 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
           <div id="simulation-settings" className="therapy-simulation__settings" hidden={!sidebarOpen}>
             <section className="therapy-simulation__modes" data-guide={tourOpen && tourStep === 0} aria-labelledby="conversation-mode-label">
               <p className="therapy-simulation__eyebrow" id="conversation-mode-label">Practice mode</p>
-              <div className="therapy-simulation__mode-list" role="group" aria-labelledby="conversation-mode-label">{modes.map(item => <button type="button" key={item.id} className="therapy-simulation__mode" aria-pressed={mode === item.id} onClick={() => setMode(item.id)} disabled={busy}><span className="therapy-simulation__mode-icon" aria-hidden="true">{item.symbol}</span><span>{item.name}</span><span className="therapy-simulation__mode-dot" aria-hidden="true" /></button>)}</div>
+              <div className="therapy-simulation__mode-list" role="group" aria-labelledby="conversation-mode-label">{modes.map(item => <button type="button" key={item.id} className="therapy-simulation__mode" aria-pressed={mode === item.id} onClick={() => { if (item.id !== mode) playSfx("select"); setMode(item.id); }} disabled={busy}><span className="therapy-simulation__mode-icon" aria-hidden="true">{item.symbol}</span><span>{item.name}</span><span className="therapy-simulation__mode-dot" aria-hidden="true" /></button>)}</div>
               <p className="therapy-simulation__mode-description">{busy ? "End your session to choose another mode." : selectedMode.detail}</p>
             </section>
             {mode === "conversation" && (
@@ -262,7 +282,7 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
                 <p className="therapy-simulation__eyebrow" id="conversation-duration-label">How long today</p>
                 <div className="therapy-simulation__duration-list" role="group" aria-labelledby="conversation-duration-label">
                   {SESSION_MINUTE_OPTIONS.map(minutes => (
-                    <button type="button" key={minutes} className="therapy-simulation__duration-option" aria-pressed={sessionMinutes === minutes} disabled={busy} onClick={() => setSessionMinutes(minutes)}>
+                      <button type="button" key={minutes} className="therapy-simulation__duration-option" aria-pressed={sessionMinutes === minutes} disabled={busy} onClick={() => { if (sessionMinutes !== minutes) playSfx("select"); setSessionMinutes(minutes); }}>
                       {minutes} min
                     </button>
                   ))}
@@ -290,7 +310,7 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
                     <p className="therapy-simulation__eyebrow">Your top three</p>
                     <div className="therapy-simulation__exercise-list" role="group" aria-label="Recommended exercises">
                       {recommendation.options.map(item => (
-                        <button type="button" key={item.id} className="therapy-simulation__exercise" aria-pressed={technique === item.id} disabled={busy} onClick={() => setTechnique(item.id)}>
+                        <button type="button" key={item.id} className="therapy-simulation__exercise" aria-pressed={technique === item.id} disabled={busy} onClick={() => { if (technique !== item.id) playSfx("select"); setTechnique(item.id); }}>
                           <strong>{item.name}</strong>
                           <span>{item.summary}</span>
                           <small>{item.reason}</small>
@@ -386,7 +406,7 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
                 </>
               )}
               <div className="therapy-simulation__result-actions">
-                <button type="button" className="therapy-simulation__start" onClick={() => setCompleted(null)}>Practice again</button>
+                <button type="button" className="therapy-simulation__start" onClick={() => { playSfx("step"); setCompleted(null); }}>Practice again</button>
                 {onBack && <button type="button" className="therapy-simulation__result-progress" onClick={() => void returnToDashboard()}>Your progress<span aria-hidden="true">↗</span></button>}
               </div>
             </section>

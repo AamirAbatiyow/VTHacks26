@@ -1,5 +1,6 @@
 import { useId, useRef, useState } from "react";
 import { USER_ROLES, type UserRole } from "@shared/events";
+import { playSfx } from "../audio/sfx";
 import "./RoleQuestion.css";
 
 interface Props {
@@ -25,6 +26,7 @@ export function RoleQuestion({ value, invalid, onChange }: Props) {
   const [ripples, setRipples] = useState<Record<string, number>>({});
 
   function ripple(role: UserRole) {
+    playSfx("pad-select");
     const id = ++nextRipple.current;
     setRipples((current) => ({ ...current, [role]: id }));
   }

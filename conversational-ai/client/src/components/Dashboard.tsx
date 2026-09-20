@@ -6,6 +6,7 @@ import { summarizeAnalysis } from "../progress/report";
 import { ANALYSIS_NAMES } from "@shared/sessionSummary";
 import { SimulationIcon } from "./SimulationIcon";
 import { formatDuration, formatPracticeMode, localDay, practiceWeek, type PracticeSession } from "../progress/practiceHistory";
+import { playSfx } from "../audio/sfx";
 import "./Dashboard.css";
 
 type Props = {
@@ -37,7 +38,7 @@ export function Dashboard({ profile, sessions, saved, onPractice }: Props) {
         <div className="progress-garden__identity"><span className="progress-garden__wordmark"><VocallyWordmark /></span><span>Your progress</span></div>
         <div className="progress-garden__actions">
           <button className="progress-garden__report-button" aria-haspopup="dialog" onClick={() => setReportOpen(true)}>View report <span aria-hidden="true">↗</span></button>
-          <button className="progress-garden__practice" onClick={onPractice}>Back to practice <span aria-hidden="true">↗</span></button>
+          <button className="progress-garden__practice" onClick={() => { playSfx("step"); onPractice(); }}>Back to practice <span aria-hidden="true">↗</span></button>
         </div>
       </header>
       <div className="progress-garden__content">

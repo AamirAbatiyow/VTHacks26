@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { SimulationIcon } from "./SimulationIcon";
+import { playSfx } from "../audio/sfx";
 
 const steps = [
   {
@@ -75,12 +76,15 @@ export function SimulationGuide({
       <div className="simulation-guide__actions">
         <button ref={skipButton} type="button" className="simulation-guide__skip" onClick={onDismiss}>Skip</button>
         <div>
-          {step > 0 && <button type="button" onClick={() => onStepChange(step - 1)}>Back</button>}
+          {step > 0 && <button type="button" onClick={() => { playSfx("step"); onStepChange(step - 1); }}>Back</button>}
           <button
             ref={nextButton}
             type="button"
             className="simulation-guide__next"
-            onClick={() => last ? onDismiss() : onStepChange(step + 1)}
+            onClick={() => {
+              if (last) onDismiss();
+              else { playSfx("step"); onStepChange(step + 1); }
+            }}
           >
             {last ? "Let’s begin" : "Next"}
             <span aria-hidden="true">→</span>

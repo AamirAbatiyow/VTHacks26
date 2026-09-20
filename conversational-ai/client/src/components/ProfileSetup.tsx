@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { SessionConfig, UserRole } from "@shared/events";
 import { VocallyWordmark } from "./VocallyWordmark";
 import { RoleQuestion } from "./RoleQuestion";
+import { playSfx } from "../audio/sfx";
 
 const steps = [
   { key: "name", label: "Your name", title: "What’s your name?", hint: "Every voice has a story. Let’s start with your name.", placeholder: "Type your name here" },
@@ -41,6 +42,7 @@ export function ProfileSetup({ active, onComplete }: Props) {
       return;
     }
     setError("");
+    playSfx("step");
     if (step < steps.length - 1) {
       setStep((current) => current + 1);
       return;
@@ -123,7 +125,7 @@ export function ProfileSetup({ active, onComplete }: Props) {
             <button
               type="button"
               className="profile-setup__back"
-              onClick={() => { setError(""); setStep((current) => current - 1); }}
+              onClick={() => { playSfx("step"); setError(""); setStep((current) => current - 1); }}
             >Back</button>
           )}
           <button type="submit" className="profile-setup__continue">

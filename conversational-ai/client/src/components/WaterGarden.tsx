@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import waterGarden from "../assets/water-garden-illustration.png";
+import { playSfx } from "../audio/sfx";
 import "./WaterGarden.css";
 
 type WaterGardenProps = {
@@ -76,6 +77,7 @@ export function WaterGarden({ active }: WaterGardenProps) {
 
   function rippleAround(pad: LilyPad) {
     if (!active) return;
+    playSfx("pad-tap");
     const id = ++rippleId.current;
     const timers = rippleTimers.current;
 
