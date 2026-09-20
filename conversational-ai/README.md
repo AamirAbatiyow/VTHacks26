@@ -76,59 +76,9 @@ Open http://localhost:5173
 
 Vite proxies `/ws` → `ws://localhost:3001/ws`.
 
-## Deploy one frontend + backend app on Fly.io
-
-Production uses one Fly Machine and one public origin:
-
-- Express serves `client/dist` at `/` and handles React deep links.
-- The same process serves `/health`, `/stutter-models`, and `/ws`.
-- Browser WebSockets therefore upgrade on the same HTTPS origin (`wss://.../ws`);
-  there is no public Vite server and no client-side API URL to configure.
-- The image includes the CNN and two-head ONNX models and the Timescale CA.
-
-The repository-root `fly.toml` targets the app name `vocally-vthacks26` in `iad`.
-Create the app once:
-
-```bash
-fly auth login
-fly apps create vocally-vthacks26
-```
-
-Set server-only secrets from the values in your local `.env`. Do not put these
-values in `fly.toml`, the Docker image, or a `VITE_` variable:
-
-```bash
-fly secrets set \
-  GEMINI_API_KEY='...' \
-  ELEVENLABS_API_KEY='...' \
-  ELEVENLABS_VOICE_ID='...' \
-  DATABASE_URL='postgres://...'
-```
-
-Deploy from the `VTHacks26/` repository root:
-
-```bash
-fly deploy
-fly status
-fly logs
-fly open
-```
-
-Running `npm run deploy:fly` from `conversational-ai/` is also supported; that
-script delegates to the repository-root deployment context.
-
-Fly builds both workspaces in the Docker build. Before traffic moves to a new
-release, the release command initializes the PostgreSQL/Timescale schema using
-the compiled analytics CLI. The app stays at one running Machine because an
-auto-stopped Machine adds noticeable delay to the first WebSocket connection.
-The `/health` check controls rollout health.
-
-The fallback SQLite path is `/data/analytics.sqlite`, but the container
-filesystem is ephemeral and no Fly volume is configured. Keep `DATABASE_URL`
-set for durable analytics. If the app name or region changes, edit `app` or
-`primary_region` in `fly.toml` before creating/deploying the app.
-
 ## Analytics: local SQLite, optional Tiger Data PostgreSQL
+
+### Record storage: Tiger Data PostgreSQL or local SQLite
 
 The server records session IDs, the profile name, conversation date and duration,
 utterance word/character counts and audio duration, assistant responses by count,
@@ -157,10 +107,14 @@ Small transactions run once per second; local SQLite writes are synchronous and
 may briefly occupy the server event loop. The local report includes average
 latencies; the PostgreSQL hourly view additionally computes p95 latency.
 
-### Optional: create and connect Tiger Data later
+### Tiger Data PostgreSQL
 
 Setting `DATABASE_URL` switches new writes to PostgreSQL; it does not copy existing
 SQLite history. The local file remains available for inspection.
+The server initializes the PostgreSQL tables and reporting views before accepting
+connections. If initialization fails, startup stops with a configuration error
+instead of accepting records that cannot be saved. Credentials belong only in
+the ignored `server/.env` file. Restart the server after changing the connection.
 
 1. Sign in to [Tiger Cloud](https://console.cloud.tigerdata.com/) and create a
    PostgreSQL service with TimescaleDB enabled. Choose a region near your server.
@@ -175,7 +129,12 @@ SQLite history. The local file remains available for inspection.
    Use the actual host, port, database, and credentials from Tiger Cloud. URL-encode
    special characters in passwords. TLS defaults to certificate verification for
    remote hosts; localhost defaults to no TLS. Keep this URL server-side.
-4. From `conversational-ai/`, initialize the schema and hypertable:
+   For a TigerData service using a self-signed certificate, its default encrypted
+   connection mode can be selected with `?sslmode=require&uselibpqcompat=true`.
+   This encrypts traffic without verifying the server certificate. Use
+   `sslmode=verify-full` when a trusted certificate is available.
+4. From `conversational-ai/`, enable the optional TimescaleDB hypertable (ordinary
+   PostgreSQL tables and views are also initialized automatically at startup):
 
    ```bash
    npm run db:migrate -- --timescale

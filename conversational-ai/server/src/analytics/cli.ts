@@ -1,6 +1,5 @@
 import "../config.js";
-import { createAnalyticsPool } from "./database.js";
-import { schemaSql, hypertableSql } from "./schema.js";
+import { createAnalyticsPool, initializeAnalyticsDatabase } from "./database.js";
 import { LocalAnalyticsDatabase } from "./local.js";
 
 async function main(): Promise<void> {
@@ -31,18 +30,8 @@ async function main(): Promise<void> {
   pool.on("error", () => { console.error("Analytics database connection failed."); });
   try {
     if (command === "migrate") {
-      const client = await pool.connect();
-      try {
-        await client.query("BEGIN");
-        await client.query("SELECT pg_advisory_xact_lock(724018263)");
-        await client.query(schemaSql);
-        if (process.argv.includes("--timescale")) await client.query(hypertableSql);
-        await client.query("COMMIT");
-        console.log("Analytics schema ready" + (process.argv.includes("--timescale") ? " (TimescaleDB hypertable)." : "."));
-      } catch (error) {
-        await client.query("ROLLBACK");
-        throw error;
-      } finally { client.release(); }
+      await initializeAnalyticsDatabase(pool, process.argv.includes("--timescale"));
+      console.log("Analytics schema ready" + (process.argv.includes("--timescale") ? " (TimescaleDB hypertable)." : "."));
     } else if (command === "report") {
       const conversations = await pool.query(`SELECT * FROM analytics.conversations
         WHERE started_at >= now() - interval '7 days' ORDER BY started_at DESC`);
