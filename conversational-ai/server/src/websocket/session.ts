@@ -30,6 +30,7 @@ import { UtteranceCapture } from "../analysis/UtteranceCapture.js";
 import { StutterClassifier } from "../analysis/StutterClassifier.js";
 import { stutterAnalysisToAssessment } from "../analysis/StutteringAssessment.js";
 import { DEFAULT_STUTTER_MODEL_ID } from "../analysis/modelRegistry.js";
+import { pickFreeTierVoice } from "../conversation/voices.js";
 
 /**
  * Fan-out microphone audio bus.
@@ -278,9 +279,11 @@ export class VoiceSession {
     this.started = true;
     this.audioClock.start();
 
+    const voice = pickFreeTierVoice();
+    logger.info("ELEVENLABS", `session voice: ${voice.name} (${voice.id})`);
     this.elevenLabs = new ElevenLabsStreamer(
       this.config.elevenLabsApiKey,
-      this.config.elevenLabsVoiceId,
+      voice.id,
       this.config.elevenLabsModelId,
     );
 
@@ -445,7 +448,7 @@ export class VoiceSession {
     });
 
     this.conversationStartedAt = performance.now();
-    this.summary = new SessionSummaryCollector(this.sessionId, new Date().toISOString(), config.conversationMode ?? "default");
+    this.summary = new SessionSummaryCollector(this.sessionId, new Date().toISOString(), config.conversationMode ?? "conversation");
     this.send({
       type: "session_started",
       sessionId: this.sessionId,

@@ -3,11 +3,6 @@ import type { SessionConfig, UserRole } from "@shared/events";
 import { VocallyWordmark } from "./VocallyWordmark";
 import { RoleQuestion } from "./RoleQuestion";
 
-interface StutterModelOption {
-  id: string;
-  label: string;
-}
-
 const steps = [
   { key: "name", label: "Your name", title: "What’s your name?", hint: "Every voice has a story. Let’s start with your name.", placeholder: "Type your name here" },
   { key: "role", label: "Your role", title: "What role best suits you?", hint: "Choose the lily pad that feels closest to you.", placeholder: "" },
@@ -23,8 +18,6 @@ export function ProfileSetup({ active, onComplete }: Props) {
   const [name, setName] = useState("");
   const [role, setRole] = useState<UserRole | undefined>();
   const [error, setError] = useState("");
-  const [stutterModels, setStutterModels] = useState<StutterModelOption[]>([]);
-  const [stutterModel, setStutterModel] = useState<string>("");
   const inputRef = useRef<HTMLInputElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const question = steps[step]!;
@@ -34,28 +27,6 @@ export function ProfileSetup({ active, onComplete }: Props) {
     if (steps[step]?.key === "role") headingRef.current?.focus({ preventScroll: true });
     else inputRef.current?.focus({ preventScroll: true });
   }, [active, step]);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/stutter-models")
-      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`status ${res.status}`))))
-      .then((data: { models?: StutterModelOption[]; defaultId?: string }) => {
-        if (cancelled) return;
-        const models = data.models ?? [];
-        setStutterModels(models);
-        if (data.defaultId) {
-          setStutterModel(data.defaultId);
-        } else if (models[0]) {
-          setStutterModel(models[0].id);
-        }
-      })
-      .catch(() => {
-        // No model list available (e.g. server not reachable yet) — proceed without a selection.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -77,7 +48,6 @@ export function ProfileSetup({ active, onComplete }: Props) {
     onComplete({
       childName: name.trim(),
       userRole: role,
-      stutterModel: stutterModel || undefined,
     });
   }
 
@@ -126,26 +96,6 @@ export function ProfileSetup({ active, onComplete }: Props) {
           <p className="profile-setup__error" id="setup-error" role="alert">{error}</p>
           {question.key === "name" && <p className="profile-setup__reassurance">No rush. We’re here to listen.</p>}
         </div>
-
-        {step === steps.length - 1 && stutterModels.length > 0 && (
-          <div className="profile-setup__model">
-            <label className="profile-setup__model-label" htmlFor="setup-stutter-model">
-              Detection model
-            </label>
-            <select
-              id="setup-stutter-model"
-              className="profile-setup__model-select"
-              value={stutterModel}
-              onChange={(event) => setStutterModel(event.target.value)}
-            >
-              {stutterModels.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
       </div>
 
       <footer className="profile-setup__footer">

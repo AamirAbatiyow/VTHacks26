@@ -32,6 +32,9 @@ export interface VoiceSessionState {
   assistantUtteranceId: string | null;
   activeGenerationId: string | null;
   error: string | null;
+  /** Set when the classifier flags a non-fluent event on the latest turn. */
+  stutterCue: string | null;
+  stutterCueId: number;
 }
 
 /**
@@ -78,7 +81,7 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
   const completionRef = useRef(onSessionComplete);
   completionRef.current = onSessionComplete;
   const practiceRef = useRef<{ collector: SessionSummaryCollector; clockStart: number; stoppedAt?: number } | null>(null);
-  const practiceModeRef = useRef<PracticeSession["mode"]>("default");
+  const practiceModeRef = useRef<PracticeSession["mode"]>("conversation");
   const [isEnding, setIsEnding] = useState(false);
   const endingRef = useRef<{ promise: Promise<void>; resolve: () => void; timer: ReturnType<typeof setTimeout> } | null>(null);
   const [state, setState] = useState<VoiceSessionState>({
@@ -93,6 +96,8 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
     assistantUtteranceId: null,
     activeGenerationId: null,
     error: null,
+    stutterCue: null,
+    stutterCueId: 0,
   });
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -187,7 +192,7 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
     cleanupMedia(); // Stop capture/playback immediately, but keep final events flowing.
     if (practiceRef.current) practiceRef.current.stoppedAt = performance.now();
     const reset = () => setState(s => ({ ...s, connected: false, sessionActive: false, isStarting: false,
-      assistantSpeaking: false, activeGenerationId: null, interimText: "", assistantStreaming: "" }));
+      assistantSpeaking: false, activeGenerationId: null, interimText: "", assistantStreaming: "", stutterCue: null }));
     if (!canFinish) {
       sendJson({ type: "end_session" });
       closeConnection();
@@ -250,6 +255,7 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
             activeGenerationId: null,
             assistantStreaming: "",
             interimText: "",
+            stutterCue: null,
           }));
           break;
         case "transcript_interim":
@@ -266,10 +272,14 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
             ],
           }));
           break;
-        case "stutter_analysis":
-          // Feeds the session summary the dashboard and report are built from.
+        case "stutter_analysis": {
           practiceRef.current?.collector.addAnalysis(ev.turnId, ev.analysis);
+          const flagged = ev.analysis.events.some((event) => event.detected && event.label !== "Fluent");
+          setState((s) => flagged
+            ? { ...s, stutterCue: "Take your time.", stutterCueId: s.stutterCueId + 1 }
+            : s);
           break;
+        }
         case "user_speech_started":
           // Server-side barge-in may also fire; client VAD usually already cleared.
           if (!micMutedRef.current && activeGenRef.current) {
@@ -401,7 +411,7 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
       const version = ++sessionVersionRef.current;
       const isCurrent = () => mountedRef.current && version === sessionVersionRef.current;
       startingRef.current = true;
-      practiceModeRef.current = config.conversationMode ?? "default";
+      practiceModeRef.current = config.conversationMode ?? "conversation";
       interruptedGenerationsRef.current.clear();
       setState((s) => ({
         ...s,
@@ -413,6 +423,7 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
         transcripts: [],
         interimText: "",
         assistantStreaming: "",
+        stutterCue: null,
       }));
       const player = new StreamingAudioPlayer();
       const mic = new MicrophoneStream();

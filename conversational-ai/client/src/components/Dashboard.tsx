@@ -5,7 +5,7 @@ import { PracticeReport } from "./PracticeReport";
 import { summarizeAnalysis } from "../progress/report";
 import { ANALYSIS_NAMES } from "@shared/sessionSummary";
 import { SimulationIcon } from "./SimulationIcon";
-import { formatDuration, localDay, practiceWeek, type PracticeSession } from "../progress/practiceHistory";
+import { formatDuration, formatPracticeMode, localDay, practiceWeek, type PracticeSession } from "../progress/practiceHistory";
 import "./Dashboard.css";
 
 type Props = {
@@ -71,7 +71,7 @@ export function Dashboard({ profile, sessions, saved, onPractice }: Props) {
           <div className="progress-garden__section-heading"><h3 id="recent-title">Recent sessions</h3>{sessions.length > 0 && <span>{sessions.length} total</span>}</div>
           {recent.length ? <ul className="progress-garden__sessions">{recent.map(item => <li key={item.id}>
             <span className="progress-garden__session-icon" aria-hidden="true"><SimulationIcon name="sound" /></span>
-            <div><strong>{item.mode} practice</strong><time dateTime={item.startedAt}>{new Date(item.startedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })} · {new Date(item.startedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</time></div>
+            <div><strong>{formatPracticeMode(item.mode)} practice</strong><time dateTime={item.startedAt}>{new Date(item.startedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })} · {new Date(item.startedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</time></div>
             <span className="progress-garden__session-duration">{formatDuration(item.seconds)}<small>{item.turns} speaking {item.turns === 1 ? "turn" : "turns"}</small></span>
           </li>)}</ul> : <div className="progress-garden__empty"><span aria-hidden="true">◌</span><h4>Your first session starts here.</h4><p>Finish a conversation and your practice will appear automatically.</p></div>}
           {sessions.length > 4 && <button className="progress-garden__more" onClick={() => setShowAll(value => !value)}>{showAll ? "Show fewer" : "View all sessions"}</button>}

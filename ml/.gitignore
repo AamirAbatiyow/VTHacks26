@@ -2,5 +2,3 @@
 __pycache__/
 artifacts/
 *.pyc
-ml-stuttering-events-dataset/
-sep28k_data/

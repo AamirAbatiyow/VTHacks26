@@ -16,12 +16,8 @@ export const USER_ROLES = [
 export type UserRole = (typeof USER_ROLES)[number];
 
 export const CONVERSATION_MODES = [
-  "default",
-  "friendly",
-  "informative",
-  "critical",
   "conversation",
-  "business",
+  "exercises",
 ] as const;
 
 export type ConversationMode = (typeof CONVERSATION_MODES)[number];
@@ -30,8 +26,10 @@ export type ConversationMode = (typeof CONVERSATION_MODES)[number];
 export interface SessionConfig {
   childName?: string;
   userRole?: UserRole;
-  /** The conversation style selected before starting a practice session. */
+  /** Conversation vs guided speech-exercise practice. */
   conversationMode?: ConversationMode;
+  /** Technique id from the speech-exercise catalog. */
+  exerciseTechnique?: string;
   age?: number;
   interests?: string[];
   targetPhoneme?: string;

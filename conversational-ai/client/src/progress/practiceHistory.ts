@@ -1,7 +1,21 @@
 import type { SessionSummary } from "@shared/sessionSummary";
 export type PracticeSession = SessionSummary;
 
-const modes = ["default", "friendly", "informative", "critical", "conversation", "business"];
+const modes = ["conversation", "exercises", "default", "friendly", "informative", "critical", "business"];
+
+const modeNames: Record<string, string> = {
+  conversation: "Conversation",
+  exercises: "Speech exercises",
+  default: "Conversation",
+  friendly: "Conversation",
+  informative: "Conversation",
+  critical: "Conversation",
+  business: "Conversation",
+};
+
+export function formatPracticeMode(mode: string): string {
+  return modeNames[mode] ?? "Conversation";
+}
 const key = (name: string) => `vocally-practice-history-v2:${encodeURIComponent(name.trim().toLowerCase())}`;
 
 export function isPracticeSession(s: unknown): s is PracticeSession {

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { SimulationIcon } from "./SimulationIcon";
 const steps = [
-  { title: "Make this space yours.", text: "The sidebar lets you choose how we talk. Try Friendly for encouragement, or Business to rehearse a real-world conversation.", note: "Choose a mode before starting your session.", icon: "spark" as const },
+  { title: "Make this space yours.", text: "Choose Conversation for everyday talk, or Speech Exercises to practice a technique chosen for you. If a word snags in conversation, we will remind you to take your time.", note: "Choose a mode before starting your session.", icon: "spark" as const },
   { title: "Find a comfortable pace.", text: "Use Speed to choose how quickly subtitles appear. The microphone button lets you mute yourself whenever you need a pause.", note: "The optional camera is a private mirror, visible only to you.", icon: "speed" as const },
   { title: "Begin with a little hello.", text: "Select Start session when you’re ready. The contours gently pulse while Vocally speaks, and the words appear just below.", note: "You can reopen this guide with “A quick tour.”", icon: "sound" as const },
 ];

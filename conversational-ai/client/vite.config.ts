@@ -22,6 +22,9 @@ export default defineConfig({
       "/health": {
         target: "http://localhost:3001",
       },
+      "/exercise-recommendations": {
+        target: "http://localhost:3001",
+      },
     },
   },
 });

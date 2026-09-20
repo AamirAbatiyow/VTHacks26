@@ -16,6 +16,8 @@ export interface GeminiGenerateParams {
     parts: Array<{ text: string }>;
   }>;
   abortSignal?: AbortSignal;
+  maxOutputTokens?: number;
+  temperature?: number;
 }
 
 /**
@@ -101,6 +103,28 @@ export class GeminiClient {
     return true;
   }
 
+  async generateText(params: GeminiGenerateParams): Promise<string> {
+    const run = () => this.ai.models.generateContent({
+      model: this.model,
+      contents: params.contents,
+      config: {
+        systemInstruction: params.systemInstruction,
+        abortSignal: params.abortSignal,
+        temperature: params.temperature ?? 0.4,
+        maxOutputTokens: params.maxOutputTokens ?? 700,
+        ...THINKING_CONFIG,
+      },
+    });
+    let result;
+    try {
+      result = await run();
+    } catch (err) {
+      if (!isModelNotFound(err) || !(await this.recoverFromModelError())) throw err;
+      result = await run();
+    }
+    return result.text?.trim() ?? "";
+  }
+
   async *generateStream(
     params: GeminiGenerateParams,
   ): AsyncGenerator<string, void, unknown> {
@@ -127,8 +151,8 @@ export class GeminiClient {
       config: {
         systemInstruction: params.systemInstruction,
         abortSignal: params.abortSignal,
-        temperature: 0.8,
-        maxOutputTokens: 256,
+        temperature: params.temperature ?? 0.8,
+        maxOutputTokens: params.maxOutputTokens ?? 320,
         ...THINKING_CONFIG,
       },
     });

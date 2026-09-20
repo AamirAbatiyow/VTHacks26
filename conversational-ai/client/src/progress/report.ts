@@ -1,6 +1,6 @@
 import type { SessionConfig } from "@shared/events";
 import { ANALYSIS_LABELS, ANALYSIS_NAMES } from "@shared/sessionSummary";
-import { formatDuration, type PracticeSession } from "./practiceHistory";
+import { formatDuration, formatPracticeMode, type PracticeSession } from "./practiceHistory";
 
 export function summarizeAnalysis(sessions: PracticeSession[]) {
   const categories = Object.fromEntries(ANALYSIS_LABELS.map(label => [label, 0]));
@@ -34,7 +34,7 @@ export function buildPracticeReport(profile: SessionConfig, sessions: PracticeSe
     "Flags describe model predictions per utterance, not the number of repetitions or a clinical severity score. Categories can overlap. This is not a diagnosis.",
     "", "SESSION HISTORY",
     ...(sessions.length ? sessions.map(session =>
-      `${new Date(session.startedAt).toLocaleString()} | ${session.mode} | ${formatDuration(session.seconds)} | ${session.turns} speaking turns | ${session.analysis?.analyzedTurns ?? 0} analyzed | ${session.source === "server" ? "Backend summary" : "Device summary (backend confirmation unavailable)"}`
+      `${new Date(session.startedAt).toLocaleString()} | ${formatPracticeMode(session.mode)} | ${formatDuration(session.seconds)} | ${session.turns} speaking turns | ${session.analysis?.analyzedTurns ?? 0} analyzed | ${session.source === "server" ? "Backend summary" : "Device summary (backend confirmation unavailable)"}`
     ) : ["No completed sessions yet."]),
     "", "Only session totals and model flags are included; no audio or transcripts. Nothing is sent to a clinician automatically.",
   ].join("\n");

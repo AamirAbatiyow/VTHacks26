@@ -5,6 +5,7 @@ import {
   type SessionConfig,
   type UserRole,
 } from "../../../shared/events.js";
+import { isKnownTechniqueId } from "../conversation/techniques.js";
 
 /** Validate browser-supplied profile data before connecting paid providers. */
 export function parseSessionConfig(value: unknown): SessionConfig {
@@ -43,8 +44,10 @@ export function parseSessionConfig(value: unknown): SessionConfig {
     return [...new Set(items.map((item) => item.trim()).filter(Boolean))];
   };
 
-  if (config.age !== undefined && (typeof config.age !== "number" || !Number.isFinite(config.age))) {
-    throw new Error("Age must be a number.");
+  if (config.age !== undefined) {
+    if (typeof config.age !== "number" || !Number.isFinite(config.age) || config.age < 2 || config.age > 120) {
+      throw new Error("Age must be a number between 2 and 120.");
+    }
   }
 
   const userRole = optionalText("userRole", 80);
@@ -54,21 +57,27 @@ export function parseSessionConfig(value: unknown): SessionConfig {
 
   const conversationMode = optionalText("conversationMode", 40);
   if (conversationMode !== undefined && !CONVERSATION_MODES.some((mode) => mode === conversationMode)) {
-    throw new Error("Choose a supported conversation mode.");
+    throw new Error("Choose Conversation or Speech Exercises.");
+  }
+
+  const exerciseTechnique = optionalText("exerciseTechnique", 80);
+  if (exerciseTechnique !== undefined && !isKnownTechniqueId(exerciseTechnique)) {
+    throw new Error("Choose a supported speech exercise.");
+  }
+  if (conversationMode === "exercises" && !exerciseTechnique) {
+    throw new Error("Pick one of the three recommended exercises before starting.");
   }
 
   return {
     childName: optionalText("childName"),
     userRole: userRole as UserRole | undefined,
     conversationMode: conversationMode as ConversationMode | undefined,
+    exerciseTechnique,
     age: config.age as number | undefined,
     interests: optionalList("interests"),
     targetPhoneme: optionalText("targetPhoneme"),
     practiceGoals: optionalList("practiceGoals", 6, 100),
     needsDescription: optionalText("needsDescription", 1000),
-    // Which registered stutter model (analysis/modelRegistry.ts) this session
-    // wants — without this the model dropdown's choice never reaches the
-    // server and every session silently uses the default model.
     stutterModel: optionalText("stutterModel", 80),
   };
 }
