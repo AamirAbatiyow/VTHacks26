@@ -131,6 +131,37 @@
   100% { opacity: 1; transform: scale(1); }
 }
 @keyframes therapy-cue-out { to { opacity: 0; transform: scale(0.98); } }
+.therapy-simulation__endless-note { padding-inline: 10px; margin: 0 0 16px; }
+.therapy-simulation__endless-score { margin: 4px 0 18px; }
+.therapy-simulation__endless-score span { display: block; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #718173; }
+.therapy-simulation__endless-score strong { display: block; margin-top: 6px; font-family: "Libre Caslon Display", Georgia, serif; font-weight: 400; font-size: clamp(56px, 7vw, 96px); letter-spacing: -2.4px; line-height: 0.9; color: #2f7f96; }
+.therapy-simulation__praise-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  overflow: hidden;
+}
+.therapy-simulation__praise {
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  margin: 0;
+  transform: translate(-50%, 0);
+  text-align: center;
+  font-family: "Libre Caslon Display", Georgia, serif;
+  font-size: clamp(28px, 4.2vw, 52px);
+  letter-spacing: -1.1px;
+  line-height: 1;
+  color: #2f7f96;
+  text-shadow: 0 8px 24px #dceef0aa;
+  animation: therapy-praise-float 1.7s ease-out forwards;
+}
+@keyframes therapy-praise-float {
+  0% { opacity: 0; transform: translate(-50%, 22px); }
+  14% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -86px); }
+}
 .therapy-simulation__stage-footer { position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: auto; padding: 23px 28px; }
 .therapy-simulation__stage-note { display: flex; align-items: center; gap: 9px; font-size: 10px; color: #537768; }
 .therapy-simulation__stage-note svg { width: 16px; }
@@ -208,7 +239,7 @@
   .therapy-simulation__sidebar { padding: 14px; border-radius: 16px; }
   .therapy-simulation__sidebar-heading { margin: 0 0 12px; }
   .therapy-simulation__sidebar-title { font-size: 24px; }
-  .therapy-simulation__mode-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .therapy-simulation__mode-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
   .therapy-simulation button.therapy-simulation__mode { padding: 9px 6px; font-size: 10px; gap: 6px; min-height: 40px; }
   .therapy-simulation__mode-icon { font-size: 17px; width: 17px; }
   .therapy-simulation__mode-dot { display: none; }
@@ -262,4 +293,10 @@
 @media (prefers-reduced-motion: reduce) {
   .therapy-simulation *, .therapy-simulation *::before, .therapy-simulation *::after { transition: none !important; }
   .therapy-simulation__stutter-cue { animation: therapy-cue-out 550ms ease 2s forwards; }
+  .therapy-simulation__praise { animation: therapy-praise-fade 1.2s linear forwards; }
+}
+@keyframes therapy-praise-fade {
+  0% { opacity: 0; }
+  18% { opacity: 1; }
+  100% { opacity: 0; }
 }

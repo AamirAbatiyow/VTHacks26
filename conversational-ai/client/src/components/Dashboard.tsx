@@ -72,7 +72,7 @@ export function Dashboard({ profile, sessions, saved, onPractice }: Props) {
           {recent.length ? <ul className="progress-garden__sessions">{recent.map(item => <li key={item.id}>
             <span className="progress-garden__session-icon" aria-hidden="true"><SimulationIcon name="sound" /></span>
             <div><strong>{formatPracticeMode(item.mode)} practice</strong><time dateTime={item.startedAt}>{new Date(item.startedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })} · {new Date(item.startedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</time></div>
-            <span className="progress-garden__session-duration">{formatDuration(item.seconds)}<small>{item.turns} speaking {item.turns === 1 ? "turn" : "turns"}</small></span>
+            <span className="progress-garden__session-duration">{item.score ? item.score.total.toLocaleString() : formatDuration(item.seconds)}<small>{item.score ? `Score · ${item.turns} ${item.turns === 1 ? "turn" : "turns"}` : `${item.turns} speaking ${item.turns === 1 ? "turn" : "turns"}`}</small></span>
           </li>)}</ul> : <div className="progress-garden__empty"><span aria-hidden="true">◌</span><h4>Your first session starts here.</h4><p>Finish a conversation and your practice will appear automatically.</p></div>}
           {sessions.length > 4 && <button className="progress-garden__more" onClick={() => setShowAll(value => !value)}>{showAll ? "Show fewer" : "View all sessions"}</button>}
         </section>

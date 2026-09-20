@@ -18,6 +18,7 @@ export type UserRole = (typeof USER_ROLES)[number];
 export const CONVERSATION_MODES = [
   "conversation",
   "exercises",
+  "endless",
 ] as const;
 
 export type ConversationMode = (typeof CONVERSATION_MODES)[number];
@@ -33,7 +34,7 @@ export function isSessionMinutes(value: unknown): value is SessionMinutes {
 export interface SessionConfig {
   childName?: string;
   userRole?: UserRole;
-  /** Conversation vs guided speech-exercise practice. */
+  /** Conversation vs guided speech-exercise practice vs endless round. */
   conversationMode?: ConversationMode;
   /** Technique id from the speech-exercise catalog. */
   exerciseTechnique?: string;
@@ -230,6 +231,11 @@ export interface ServerPongEvent {
   t: number;
 }
 
+export interface PraiseEvent {
+  type: "praise";
+  text: string;
+}
+
 export type ServerJsonEvent =
   | SessionStartedEvent
   | SessionWrappingUpEvent
@@ -247,7 +253,8 @@ export type ServerJsonEvent =
   | InterruptedEvent
   | ErrorEvent
   | TurnMetricsEvent
-  | ServerPongEvent;
+  | ServerPongEvent
+  | PraiseEvent;
 
 // ---------------------------------------------------------------------------
 // Binary protocol

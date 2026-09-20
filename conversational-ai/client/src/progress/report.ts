@@ -34,7 +34,7 @@ export function buildPracticeReport(profile: SessionConfig, sessions: PracticeSe
     "Flags describe model predictions per utterance, not the number of repetitions or a clinical severity score. Categories can overlap. This is not a diagnosis.",
     "", "SESSION HISTORY",
     ...(sessions.length ? sessions.map(session =>
-      `${new Date(session.startedAt).toLocaleString()} | ${formatPracticeMode(session.mode)} | ${formatDuration(session.seconds)} | ${session.turns} speaking turns | ${session.analysis?.analyzedTurns ?? 0} analyzed | ${session.source === "server" ? "Backend summary" : "Device summary (backend confirmation unavailable)"}`
+      `${new Date(session.startedAt).toLocaleString()} | ${formatPracticeMode(session.mode)} | ${formatDuration(session.seconds)} | ${session.turns} speaking turns | ${session.score ? `score ${session.score.total} (richness ${Math.round(session.score.complexity * 100)}%) | ` : ""}${session.analysis?.analyzedTurns ?? 0} analyzed | ${session.source === "server" ? "Backend summary" : "Device summary (backend confirmation unavailable)"}`
     ) : ["No completed sessions yet."]),
     "", "Only session totals and model flags are included; no audio or transcripts. Nothing is sent to a clinician automatically.",
   ].join("\n");

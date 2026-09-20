@@ -35,6 +35,9 @@ export interface VoiceSessionState {
   /** On-screen coaching line after a non-fluent event. */
   stutterCue: string | null;
   stutterCueId: number;
+  praiseCue: string | null;
+  praiseCueId: number;
+  wrappingUp: boolean;
 }
 
 /**
@@ -116,6 +119,9 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
     error: null,
     stutterCue: null,
     stutterCueId: 0,
+    praiseCue: null,
+    praiseCueId: 0,
+    wrappingUp: false,
   });
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -211,7 +217,7 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
     cleanupMedia(); // Stop capture/playback immediately, but keep final events flowing.
     if (practiceRef.current) practiceRef.current.stoppedAt = performance.now();
     const reset = () => setState(s => ({ ...s, connected: false, sessionActive: false, isStarting: false,
-      assistantSpeaking: false, activeGenerationId: null, interimText: "", assistantStreaming: "", stutterCue: null }));
+      assistantSpeaking: false, activeGenerationId: null, interimText: "", assistantStreaming: "", stutterCue: null, praiseCue: null, wrappingUp: false }));
     if (!canFinish) {
       sendJson({ type: "end_session" });
       closeConnection();
@@ -262,6 +268,7 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
         case "session_wrapping_up":
           wrappingUpRef.current = true;
           vadRef.current?.disarm();
+          setState((s) => ({ ...s, wrappingUp: true }));
           break;
         case "session_ended": {
           if (ev.summary && isPracticeSession(ev.summary) && ev.summary.id === practiceRef.current?.collector.id) {
@@ -280,6 +287,8 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
               assistantStreaming: "",
               interimText: "",
               stutterCue: null,
+              praiseCue: null,
+              wrappingUp: false,
             }));
           };
           if (playerRef.current?.isPlaying) {
@@ -313,11 +322,14 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
         case "stutter_analysis": {
           practiceRef.current?.collector.addAnalysis(ev.turnId, ev.analysis);
           const flagged = ev.analysis.events.some((event) => event.detected && event.label !== "Fluent");
-          setState((s) => flagged
+          setState((s) => flagged && practiceModeRef.current !== "endless"
             ? { ...s, stutterCue: nextStutterCue(s.stutterCue), stutterCueId: s.stutterCueId + 1 }
             : s);
           break;
         }
+        case "praise":
+          setState((s) => ({ ...s, praiseCue: ev.text, praiseCueId: s.praiseCueId + 1 }));
+          break;
         case "assistant_text_delta":
           if (activeGenRef.current !== ev.generationId) {
             activeGenRef.current = ev.generationId;
@@ -457,6 +469,8 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
         interimText: "",
         assistantStreaming: "",
         stutterCue: null,
+        praiseCue: null,
+        wrappingUp: false,
       }));
       const player = new StreamingAudioPlayer();
       const mic = new MicrophoneStream();

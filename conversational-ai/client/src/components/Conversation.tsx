@@ -21,6 +21,7 @@ const guideKey = "vocally-simulation-guide-v1";
 const modes: { id: ConversationMode; name: string; detail: string; symbol: string }[] = [
   { id: "conversation", name: "Conversation", detail: "Everyday talk. If speech snags, we give the words time.", symbol: "◌" },
   { id: "exercises", name: "Speech Exercises", detail: "A technique chosen for you, then practiced out loud.", symbol: "✦" },
+  { id: "endless", name: "Endless", detail: "A living conversation. Keep going — we’ll rest it somewhere kind.", symbol: "∞" },
 ];
 
 interface ExerciseOption {
@@ -54,7 +55,11 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
     onSessionComplete?.(entry);
   });
   const camera = useCameraPreview();
-  const [mode, setMode] = useState<ConversationMode>(initialConfig?.conversationMode === "exercises" ? "exercises" : "conversation");
+  const [mode, setMode] = useState<ConversationMode>(
+    initialConfig?.conversationMode === "exercises" || initialConfig?.conversationMode === "endless"
+      ? initialConfig.conversationMode
+      : "conversation",
+  );
   const [age, setAge] = useState(initialConfig?.age ? String(initialConfig.age) : "");
   const [struggle, setStruggle] = useState(initialConfig?.needsDescription ?? "");
   const [technique, setTechnique] = useState(initialConfig?.exerciseTechnique ?? "");
@@ -73,6 +78,7 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
   const [previewing, setPreviewing] = useState(false);
   const [previewId, setPreviewId] = useState(0);
   const [hasPreview, setHasPreview] = useState(false);
+  const [praises, setPraises] = useState<{ id: number; text: string }[]>([]);
   const paceRef = useRef<HTMLDivElement>(null);
   const paceButton = useRef<HTMLButtonElement>(null);
   const startButton = useRef<HTMLButtonElement>(null);
@@ -83,10 +89,10 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
   const captionText = hasPreview ? previewText : session.assistantStreaming || latestAssistant?.text || "";
   const captionId = hasPreview ? `preview-${previewId}` : session.assistantUtteranceId || latestAssistant?.id || "idle";
   const speaking = session.assistantSpeaking || previewing;
-  const canStart = mode === "exercises" ? Boolean(technique) : Boolean(sessionMinutes);
+  const canStart = mode === "exercises" ? Boolean(technique) : mode === "conversation" ? Boolean(sessionMinutes) : true;
   const remainingMs = endsAt == null ? null : endsAt - now;
-  const wrappingUp = Boolean(busy && remainingMs != null && remainingMs <= 0);
-  const status = previewing ? "Animation preview" : session.isStarting ? "Getting ready…" : wrappingUp ? "That’s all for today…" : session.assistantSpeaking ? "Vocally is speaking" : session.sessionActive ? session.micMuted ? "Microphone is muted" : session.activeGenerationId ? "A moment to think…" : remainingMs != null ? `${formatClock(remainingMs)} left` : "Listening to you" : "Ready when you are";
+  const wrappingUp = session.wrappingUp || Boolean(busy && remainingMs != null && remainingMs <= 0);
+  const status = previewing ? "Animation preview" : session.isStarting ? "Getting ready…" : wrappingUp ? (mode === "endless" ? "A good place to rest…" : "That’s all for today…") : session.assistantSpeaking ? "Vocally is speaking" : session.sessionActive ? session.micMuted ? "Microphone is muted" : session.activeGenerationId ? "A moment to think…" : remainingMs != null ? `${formatClock(remainingMs)} left` : "Listening to you" : "Ready when you are";
 
   useEffect(() => {
     if (!previewing) return;
@@ -95,12 +101,23 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
   }, [previewing, previewId]);
 
   useEffect(() => {
-    if (!session.sessionActive || !sessionMinutes) {
+    if (!session.sessionActive || mode !== "conversation" || !sessionMinutes) {
       setEndsAt(null);
       return;
     }
     setEndsAt(Date.now() + sessionMinutes * 60_000);
-  }, [session.sessionActive, sessionMinutes]);
+  }, [session.sessionActive, sessionMinutes, mode]);
+
+  useEffect(() => {
+    if (!session.praiseCue || session.praiseCueId < 1) return;
+    const id = session.praiseCueId;
+    const text = session.praiseCue;
+    setPraises((list) => [...list, { id, text }]);
+    const timer = window.setTimeout(() => {
+      setPraises((list) => list.filter((item) => item.id !== id));
+    }, 1800);
+    return () => window.clearTimeout(timer);
+  }, [session.praiseCue, session.praiseCueId]);
 
   useEffect(() => {
     if (endsAt == null) return;
@@ -155,6 +172,7 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
     if (busy) { camera.stop(); await session.endConversation(); return; }
     if (!canStart) return;
     setCompleted(null);
+    setPraises([]);
     void session.startConversation({
       ...initialConfig,
       conversationMode: mode,
@@ -194,6 +212,9 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
                 <p className="therapy-simulation__rec-note">{busy && remainingMs != null ? `${formatClock(remainingMs)} remaining.` : "Pick a length before you start. When time is up, we’ll close gently."}</p>
               </section>
             )}
+            {mode === "endless" && (
+              <p className="therapy-simulation__rec-note therapy-simulation__endless-note">Keep the talk going. When it is time to rest, we’ll leave it on a kind beat — never on a miss.</p>
+            )}
             {mode === "exercises" && (
               <section className="therapy-simulation__exercises" aria-labelledby="exercise-review-label">
                 <p className="therapy-simulation__eyebrow" id="exercise-review-label">What you’re working on</p>
@@ -225,9 +246,10 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
             )}
             <div className="therapy-simulation__sidebar-bottom">
               {mode === "conversation" && !sessionMinutes && <div className="therapy-simulation__invitation"><span aria-hidden="true">✳</span><p>No perfect words needed.<br />Just begin where you are.</p></div>}
+              {mode === "endless" && !busy && <div className="therapy-simulation__invitation"><span aria-hidden="true">∞</span><p>Speak as fully as you like.<br />We’ll catch the good sentences.</p></div>}
               <div className="therapy-simulation__start-area" data-guide={tourOpen && tourStep === 2}>
-                <button ref={startButton} type="button" className="therapy-simulation__start" onClick={() => void startOrEnd()} disabled={session.isEnding || (!busy && !canStart)}><SimulationIcon name={busy ? "stop" : "play"} />{session.isEnding ? "Saving session…" : session.isStarting ? "Cancel" : busy ? "End session" : "Start session"}<span aria-hidden="true">{busy ? "" : "↗"}</span></button>
-                <p className="therapy-simulation__mic-note">{busy ? wrappingUp ? "That’s all the time we have for today." : "Take all the time you need." : mode === "exercises" && !technique ? "Pick one of the three exercises to begin." : mode === "conversation" && !sessionMinutes ? "Choose a conversation length to begin." : "Your microphone connects when you start."}</p>
+                <button ref={startButton} type="button" className="therapy-simulation__start" onClick={() => void startOrEnd()} disabled={session.isEnding || wrappingUp || (!busy && !canStart)}><SimulationIcon name={busy ? "stop" : "play"} />{session.isEnding ? "Saving session…" : session.isStarting ? "Cancel" : wrappingUp ? "Closing…" : busy ? "End session" : "Start session"}<span aria-hidden="true">{busy ? "" : "↗"}</span></button>
+                <p className="therapy-simulation__mic-note">{busy ? wrappingUp ? mode === "endless" ? "We’ll leave it here — that was a good stretch." : "That’s all the time we have for today." : "Take all the time you need." : mode === "exercises" && !technique ? "Pick one of the three exercises to begin." : mode === "conversation" && !sessionMinutes ? "Choose a conversation length to begin." : "Your microphone connects when you start."}</p>
               </div>
               <div className="therapy-simulation__tools" data-guide={tourOpen && tourStep === 1}>
                 <div className="therapy-simulation__pace-wrap" ref={paceRef} onKeyDown={event => { if (event.key === "Escape") { setPaceOpen(false); paceButton.current?.focus(); } }}>
@@ -245,25 +267,46 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
           {(session.error || camera.error) && <div className="therapy-simulation__error" role="alert">{session.error || camera.error}</div>}
           {completed && !busy && (
             <section className="therapy-simulation__results" aria-labelledby="session-results-title">
-              <p className="therapy-simulation__eyebrow">This session</p>
-              <h2 id="session-results-title">That’s all for <em>today.</em></h2>
-              <dl className="therapy-simulation__result-stats">
-                <div><dt>Time together</dt><dd>{formatDuration(completed.seconds)}</dd></div>
-                <div><dt>Speaking turns</dt><dd>{completed.turns}</dd></div>
-                <div><dt>Turns with flags</dt><dd>{completed.analysis?.flaggedTurns ?? 0}</dd></div>
-              </dl>
-              {completed.analysis && completed.analysis.analyzedTurns > 0 ? (
+              {completed.mode === "endless" ? (
                 <>
-                  <p className="therapy-simulation__rec-note">{completed.analysis.analyzedTurns} speaking {completed.analysis.analyzedTurns === 1 ? "turn" : "turns"} analyzed.</p>
-                  <ul className="therapy-simulation__result-flags">
-                    {ANALYSIS_LABELS.filter(label => (completed.analysis?.categories[label] ?? 0) > 0).map(label => (
-                      <li key={label}><span>{ANALYSIS_NAMES[label]}</span><strong>{completed.analysis?.categories[label]}</strong></li>
-                    ))}
-                  </ul>
-                  <p className="therapy-simulation__rec-note">Audio model observations, not a diagnosis.</p>
+                  <p className="therapy-simulation__eyebrow">Endless</p>
+                  <h2 id="session-results-title">A good place to <em>rest.</em></h2>
+                  {completed.score && (
+                    <p className="therapy-simulation__endless-score">
+                      <span>Score</span>
+                      <strong>{completed.score.total.toLocaleString()}</strong>
+                    </p>
+                  )}
+                  <dl className="therapy-simulation__result-stats">
+                    <div><dt>Time together</dt><dd>{formatDuration(completed.seconds)}</dd></div>
+                    <div><dt>Speaking turns</dt><dd>{completed.turns}</dd></div>
+                    <div><dt>Sentence richness</dt><dd>{completed.score ? `${Math.round(completed.score.complexity * 100)}%` : "—"}</dd></div>
+                  </dl>
+                  <p className="therapy-simulation__rec-note">Richer sentences lift the score. Long stretches of simple talk don’t.</p>
                 </>
               ) : (
-                <p className="therapy-simulation__rec-note">No audio-analysis results for this session yet. Unanalyzed turns aren’t counted as fluent.</p>
+                <>
+                  <p className="therapy-simulation__eyebrow">This session</p>
+                  <h2 id="session-results-title">That’s all for <em>today.</em></h2>
+                  <dl className="therapy-simulation__result-stats">
+                    <div><dt>Time together</dt><dd>{formatDuration(completed.seconds)}</dd></div>
+                    <div><dt>Speaking turns</dt><dd>{completed.turns}</dd></div>
+                    <div><dt>Turns with flags</dt><dd>{completed.analysis?.flaggedTurns ?? 0}</dd></div>
+                  </dl>
+                  {completed.analysis && completed.analysis.analyzedTurns > 0 ? (
+                    <>
+                      <p className="therapy-simulation__rec-note">{completed.analysis.analyzedTurns} speaking {completed.analysis.analyzedTurns === 1 ? "turn" : "turns"} analyzed.</p>
+                      <ul className="therapy-simulation__result-flags">
+                        {ANALYSIS_LABELS.filter(label => (completed.analysis?.categories[label] ?? 0) > 0).map(label => (
+                          <li key={label}><span>{ANALYSIS_NAMES[label]}</span><strong>{completed.analysis?.categories[label]}</strong></li>
+                        ))}
+                      </ul>
+                      <p className="therapy-simulation__rec-note">Audio model observations, not a diagnosis.</p>
+                    </>
+                  ) : (
+                    <p className="therapy-simulation__rec-note">No audio-analysis results for this session yet. Unanalyzed turns aren’t counted as fluent.</p>
+                  )}
+                </>
               )}
               <div className="therapy-simulation__result-actions">
                 <button type="button" className="therapy-simulation__start" onClick={() => setCompleted(null)}>Practice again</button>
@@ -278,8 +321,15 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
             {mode === "conversation" && session.stutterCue && (
               <p className="therapy-simulation__stutter-cue" key={session.stutterCueId} role="status">{session.stutterCue}</p>
             )}
+            {mode === "endless" && praises.length > 0 && (
+              <div className="therapy-simulation__praise-layer" aria-live="polite">
+                {praises.map((item) => (
+                  <p className="therapy-simulation__praise" key={item.id}>{item.text}</p>
+                ))}
+              </div>
+            )}
             {camera.stream && <div className="therapy-simulation__camera"><video ref={camera.videoRef} autoPlay muted playsInline aria-label="Your camera preview" /><span>Only visible to you</span><button aria-label="Close camera preview" onClick={camera.stop}>×</button></div>}
-            <div className="therapy-simulation__stage-footer"><span className="therapy-simulation__stage-note"><SimulationIcon name="sound" />{previewing ? "Visual preview · no audio" : session.assistantSpeaking ? "Follow the words. Find your rhythm." : "A quiet space for your voice."}</span>{session.assistantSpeaking ? <button className="therapy-simulation__preview" onClick={session.manualInterrupt}><SimulationIcon name="stop" />Pause reply</button> : !busy && <button className="therapy-simulation__preview" onClick={() => { if (previewing) setPreviewing(false); else { setHasPreview(true); setPreviewId(id => id + 1); setPreviewing(true); } }}><SimulationIcon name={previewing ? "stop" : "play"} />{previewing ? "Stop preview" : "Preview animation"}</button>}</div>
+            <div className="therapy-simulation__stage-footer"><span className="therapy-simulation__stage-note"><SimulationIcon name="sound" />{previewing ? "Visual preview · no audio" : wrappingUp ? (mode === "endless" ? "Leaving it on a kind beat." : "That’s all the time we have for today.") : session.assistantSpeaking ? "Follow the words. Find your rhythm." : "A quiet space for your voice."}</span>{session.assistantSpeaking && !wrappingUp ? <button className="therapy-simulation__preview" onClick={session.manualInterrupt}><SimulationIcon name="stop" />Pause reply</button> : !busy && <button className="therapy-simulation__preview" onClick={() => { if (previewing) setPreviewing(false); else { setHasPreview(true); setPreviewId(id => id + 1); setPreviewing(true); } }}><SimulationIcon name={previewing ? "stop" : "play"} />{previewing ? "Stop preview" : "Preview animation"}</button>}</div>
           </section>
           <section className="therapy-simulation__captions" aria-labelledby="captions-label"><div className="therapy-simulation__caption-heading"><p id="captions-label" className="therapy-simulation__eyebrow"><SimulationIcon name="captions" />{hasPreview ? "Preview subtitles" : "Live subtitles"}</p><span>{paceLabels[pace]} pace</span></div><VoiceCaptions text={captionText} utteranceId={captionId} speaking={speaking} complete={hasPreview || Boolean(latestAssistant?.id === captionId)} interrupted={Boolean(latestAssistant?.id === captionId && latestAssistant.interrupted)} pace={pace} placeholder="Your companion’s words will appear here." /></section>
           <footer className="therapy-simulation__footer"><span>{session.interimText ? `You: ${session.interimText}` : "A little space to pause, practice, and grow."}</span><span><i aria-hidden="true" />{selectedExercise ? selectedExercise.name : remainingMs != null ? formatClock(remainingMs) : formatPracticeMode(mode)}</span></footer>

@@ -59,7 +59,7 @@ export function parseSessionConfig(value: unknown): SessionConfig {
 
   const conversationMode = optionalText("conversationMode", 40);
   if (conversationMode !== undefined && !CONVERSATION_MODES.some((mode) => mode === conversationMode)) {
-    throw new Error("Choose Conversation or Speech Exercises.");
+    throw new Error("Choose Conversation, Speech Exercises, or Endless.");
   }
 
   const exerciseTechnique = optionalText("exerciseTechnique", 80);

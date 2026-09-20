@@ -5,6 +5,15 @@ export const ANALYSIS_NAMES: Record<string, string> = {
   Prolongation: "Prolongations", Block: "Blocks", SoundRep: "Sound repetitions",
   WordRep: "Word repetitions", Interjection: "Interjections",
 };
+export interface EndlessScore {
+  /** Integer game score. Higher is richer speech held for longer. */
+  total: number;
+  durationMs: number;
+  turns: number;
+  /** 0–1 language-richness term used in the score. */
+  complexity: number;
+}
+
 export interface SessionSummary {
   id: string;
   startedAt: string;
@@ -18,6 +27,7 @@ export interface SessionSummary {
     /** Number of utterances flagged per category, not individual event counts. */
     categories: Record<string, number>;
   };
+  score?: EndlessScore;
 }
 
 /** Keeps only IDs and aggregate model flags; never retains audio or transcripts. */
@@ -30,7 +40,7 @@ export class SessionSummaryCollector {
     if (!this.turns.has(id) || !analysis.windows.length) return;
     this.analyses.set(id, ANALYSIS_LABELS.filter(label => analysis.events.some(event => event.label === label && event.detected)));
   }
-  snapshot(seconds: number, source: "server" | "device"): SessionSummary {
+  snapshot(seconds: number, source: "server" | "device", extra?: { score?: EndlessScore }): SessionSummary {
     const categories = Object.fromEntries(ANALYSIS_LABELS.map(label => [label, 0]));
     let flaggedTurns = 0;
     for (const labels of this.analyses.values()) {
@@ -38,6 +48,7 @@ export class SessionSummaryCollector {
       for (const label of labels) categories[label]++;
     }
     return { id: this.id, startedAt: this.startedAt, mode: this.mode, seconds: Math.max(0, Math.round(seconds)),
-      turns: this.turns.size, source, analysis: { analyzedTurns: this.analyses.size, flaggedTurns, categories } };
+      turns: this.turns.size, source, analysis: { analyzedTurns: this.analyses.size, flaggedTurns, categories },
+      score: extra?.score };
   }
 }

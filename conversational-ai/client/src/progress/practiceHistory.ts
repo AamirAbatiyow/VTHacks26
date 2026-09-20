@@ -1,11 +1,12 @@
 import type { SessionSummary } from "@shared/sessionSummary";
 export type PracticeSession = SessionSummary;
 
-const modes = ["conversation", "exercises", "default", "friendly", "informative", "critical", "business"];
+const modes = ["conversation", "exercises", "endless", "default", "friendly", "informative", "critical", "business"];
 
 const modeNames: Record<string, string> = {
   conversation: "Conversation",
   exercises: "Speech exercises",
+  endless: "Endless",
   default: "Conversation",
   friendly: "Conversation",
   informative: "Conversation",
@@ -24,9 +25,16 @@ export function isPracticeSession(s: unknown): s is PracticeSession {
   if (typeof value.id !== "string" || typeof value.startedAt !== "string" || !Number.isFinite(Date.parse(value.startedAt)) ||
     !Number.isFinite(value.seconds) || value.seconds < 0 || !Number.isInteger(value.turns) || value.turns < 0 || !modes.includes(value.mode)) return false;
   const a = value.analysis;
-  return a === undefined || (a !== null && Number.isInteger(a.analyzedTurns) && a.analyzedTurns >= 0 && a.analyzedTurns <= value.turns &&
+  const analysisOk = a === undefined || (a !== null && Number.isInteger(a.analyzedTurns) && a.analyzedTurns >= 0 && a.analyzedTurns <= value.turns &&
     Number.isInteger(a.flaggedTurns) && a.flaggedTurns >= 0 && a.flaggedTurns <= a.analyzedTurns &&
     a.categories !== null && typeof a.categories === "object" && Object.values(a.categories).every(n => Number.isInteger(n) && n >= 0 && n <= a.analyzedTurns));
+  const score = value.score;
+  const scoreOk = score === undefined || (score !== null && typeof score === "object" &&
+    Number.isFinite(score.total) && score.total >= 0 &&
+    Number.isFinite(score.durationMs) && score.durationMs >= 0 &&
+    Number.isInteger(score.turns) && score.turns >= 0 &&
+    Number.isFinite(score.complexity) && score.complexity >= 0 && score.complexity <= 1);
+  return analysisOk && scoreOk;
 }
 
 export function readPracticeHistory(name: string): PracticeSession[] {

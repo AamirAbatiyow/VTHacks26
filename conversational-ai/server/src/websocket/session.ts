@@ -33,6 +33,12 @@ import { stutterAnalysisToAssessment } from "../analysis/StutteringAssessment.js
 import { DEFAULT_STUTTER_MODEL_ID } from "../analysis/modelRegistry.js";
 import { pickFreeTierVoice } from "../conversation/voices.js";
 import { looksLikeBargeIn } from "../conversation/bargeIn.js";
+import {
+  hasStutterSignal,
+  looksLikeGoodSentence,
+  nextPraise,
+  scoreEndlessRun,
+} from "../conversation/endlessScore.js";
 
 /**
  * Fan-out microphone audio bus.
@@ -88,6 +94,8 @@ export class VoiceSession {
   private conversationStartedAt: number | null = null;
   private sessionTimer: ReturnType<typeof setTimeout> | null = null;
   private wrappingUp = false;
+  private userTurns: string[] = [];
+  private lastPraise = "";
   private summary: SessionSummaryCollector | null = null;
   private pendingAnalyses = new Set<Promise<SpeechAnalysisMetadata | undefined>>();
   private latestTurn = 0;
@@ -286,6 +294,8 @@ export class VoiceSession {
       return;
     }
     this.sessionConfig = config;
+    this.userTurns = [];
+    this.lastPraise = "";
     this.analytics?.track(this.sessionId, { type: "conversation_profile", properties: {
       name: typeof config.childName === "string" ? config.childName.trim() || null : null,
     } });
@@ -548,6 +558,7 @@ export class VoiceSession {
     );
     const turnId = randomUUID();
     this.summary?.addTurn(turnId);
+    this.userTurns.push(text.trim());
     this.send({ type: "transcript_final", text, turnId, durationMs });
     logger.info("AUDIO", `utterance captured: ${durationMs}ms`);
 
@@ -564,6 +575,24 @@ export class VoiceSession {
     this.pendingAnalyses.add(pending);
     const speechAnalysis = await pending.finally(() => this.pendingAnalyses.delete(pending));
     if (this.closed || turnSequence !== this.latestTurn) return;
+    const endless = this.sessionConfig.conversationMode === "endless";
+    const flagged = hasStutterSignal(speechAnalysis);
+    if (endless && flagged) {
+      this.wrappingUp = true;
+      this.send({ type: "session_wrapping_up" });
+      logger.info("SESSION", "endless round closing");
+      await conversation.handleUserTurn(text, { t0PerfMs: t0, speechAnalysis });
+      const remaining = this.conversation?.remainingPlaybackMs() ?? 0;
+      if (remaining > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remaining + 600));
+      }
+      await this.cleanup("endless_complete");
+      return;
+    }
+    if (endless && looksLikeGoodSentence(text)) {
+      this.lastPraise = nextPraise(this.lastPraise);
+      this.send({ type: "praise", text: this.lastPraise });
+    }
     await conversation.handleUserTurn(text, { t0PerfMs: t0, speechAnalysis });
   }
 
@@ -683,7 +712,13 @@ export class VoiceSession {
       clearTimeout(timer);
     }
     this.send({ type: "session_ended", sessionId: this.sessionId,
-      summary: this.summary?.snapshot(conversationDurationMs == null ? 0 : conversationDurationMs / 1000, "server"),
+      summary: this.summary?.snapshot(
+        conversationDurationMs == null ? 0 : conversationDurationMs / 1000,
+        "server",
+        this.sessionConfig.conversationMode === "endless"
+          ? { score: scoreEndlessRun(this.userTurns, conversationDurationMs ?? 0) }
+          : undefined,
+      ),
     });
     this.send({
       type: "provider_status",
