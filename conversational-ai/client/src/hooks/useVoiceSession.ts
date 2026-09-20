@@ -280,12 +280,6 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
             : s);
           break;
         }
-        case "user_speech_started":
-          // Server-side barge-in may also fire; client VAD usually already cleared.
-          if (!micMutedRef.current && activeGenRef.current) {
-            interruptNow(activeGenRef.current);
-          }
-          break;
         case "assistant_text_delta":
           if (activeGenRef.current !== ev.generationId) {
             activeGenRef.current = ev.generationId;

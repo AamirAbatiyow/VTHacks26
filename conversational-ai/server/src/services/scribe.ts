@@ -59,9 +59,9 @@ export class ScribeTranscriber {
       language_code: "en",
       commit_strategy: "vad",
       vad_silence_threshold_secs: "0.8",
-      vad_threshold: "0.4",
-      min_speech_duration_ms: "100",
-      min_silence_duration_ms: "100",
+      vad_threshold: "0.58",
+      min_speech_duration_ms: "280",
+      min_silence_duration_ms: "160",
       include_timestamps: "true",
     });
     const url = `wss://api.elevenlabs.io/v1/speech-to-text/realtime?${params}`;

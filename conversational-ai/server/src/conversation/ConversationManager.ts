@@ -131,6 +131,13 @@ export class ConversationManager {
     return this.history;
   }
 
+  /** Text the user can currently hear or just heard — used to reject TTS echo. */
+  currentAssistantText(): string {
+    if (this.assistantBuffer.trim()) return this.assistantBuffer;
+    const last = [...this.history].reverse().find((turn): turn is ModelTurn => turn.role === "model");
+    return last?.text ?? "";
+  }
+
   getActiveGenerationId(): string | null {
     return this.activeGenerationId;
   }

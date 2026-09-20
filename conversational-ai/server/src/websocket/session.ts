@@ -31,6 +31,7 @@ import { StutterClassifier } from "../analysis/StutterClassifier.js";
 import { stutterAnalysisToAssessment } from "../analysis/StutteringAssessment.js";
 import { DEFAULT_STUTTER_MODEL_ID } from "../analysis/modelRegistry.js";
 import { pickFreeTierVoice } from "../conversation/voices.js";
+import { looksLikeBargeIn } from "../conversation/bargeIn.js";
 
 /**
  * Fan-out microphone audio bus.
@@ -398,10 +399,11 @@ export class VoiceSession {
       },
       onInterim: (text) => {
         this.send({ type: "transcript_interim", text });
-        // Server-side barge-in backstop. Triggered by recognised words rather
-        // than bare VAD, which also fires on room noise and on the assistant's
-        // own voice leaking back through the speakers.
-        if (text.trim().length > 0) this.interruptActiveGeneration();
+        // Cut the assistant only when the transcript looks like a real takeover,
+        // not a filler, click hallucination, or the assistant's own voice.
+        if (looksLikeBargeIn(text, this.conversation?.currentAssistantText() ?? "")) {
+          this.interruptActiveGeneration();
+        }
       },
       onSpeechStarted: () => {
         this.utterance.begin();
