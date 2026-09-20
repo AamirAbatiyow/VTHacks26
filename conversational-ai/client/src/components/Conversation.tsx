@@ -16,7 +16,7 @@ import "./Conversation.css";
 type CaptionPace = "slow" | "natural" | "quick";
 const paceLabels: Record<CaptionPace, string> = { slow: "Slow", natural: "Natural", quick: "Quick" };
 const previewText = "Hello. Take a comfortable breath, and tell me about a small moment from your day. There’s no need to rush.";
-const guideKey = "vocally-simulation-guide-v1";
+const guideKey = "vocally-simulation-guide-v2";
 
 const modes: { id: ConversationMode; name: string; detail: string; symbol: string }[] = [
   { id: "conversation", name: "Conversation", detail: "Everyday talk. If speech snags, we give the words time.", symbol: "◌" },
@@ -186,6 +186,10 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
     return () => document.removeEventListener("pointerdown", dismiss);
   }, [paceOpen]);
 
+  useEffect(() => {
+    if (tourOpen) setSidebarOpen(true);
+  }, [tourOpen]);
+
   const dismissTour = useCallback(() => {
     try { localStorage.setItem(guideKey, "done"); } catch { /* Dismiss for this visit even if storage is unavailable. */ }
     setTourOpen(false);
@@ -301,11 +305,11 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
             <div className="therapy-simulation__sidebar-bottom">
               {mode === "conversation" && !sessionMinutes && <div className="therapy-simulation__invitation"><span aria-hidden="true">✳</span><p>No perfect words needed.<br />Just begin where you are.</p></div>}
               {mode === "endless" && !busy && <div className="therapy-simulation__invitation"><span aria-hidden="true">∞</span><p>Speak as fully as you like.<br />We’ll catch the good sentences.</p></div>}
-              <div className="therapy-simulation__start-area" data-guide={tourOpen && tourStep === 2}>
+              <div className="therapy-simulation__start-area" data-guide={tourOpen && tourStep === 1}>
                 <button ref={startButton} type="button" className="therapy-simulation__start" onClick={() => void startOrEnd()} disabled={session.isEnding || wrappingUp || (!busy && !canStart)}><SimulationIcon name={busy ? "stop" : "play"} />{session.isEnding ? "Saving session…" : session.isStarting ? "Cancel" : wrappingUp ? "Closing…" : busy ? "End session" : "Start session"}<span aria-hidden="true">{busy ? "" : "↗"}</span></button>
                 <p className="therapy-simulation__mic-note">{busy ? wrappingUp ? mode === "endless" ? "We’ll leave it here — that was a good stretch." : "That’s all the time we have for today." : "Take all the time you need." : mode === "exercises" && !technique ? "Pick one of the three exercises to begin." : mode === "conversation" && !sessionMinutes ? "Choose a conversation length to begin." : "Your microphone connects when you start."}</p>
               </div>
-              <div className="therapy-simulation__tools" data-guide={tourOpen && tourStep === 1}>
+              <div className="therapy-simulation__tools" data-guide={tourOpen && tourStep === 2}>
                 <div className="therapy-simulation__pace-wrap" ref={paceRef} onKeyDown={event => { if (event.key === "Escape") { setPaceOpen(false); paceButton.current?.focus(); } }}>
                   <button ref={paceButton} type="button" className="therapy-simulation__tool" aria-label={`Caption speed: ${paceLabels[pace]}`} aria-expanded={paceOpen} aria-controls="caption-pace-options" onClick={() => setPaceOpen(open => !open)}><SimulationIcon name="speed" /><span>Speed</span><small>{paceLabels[pace]}</small></button>
                   {paceOpen && <div className="therapy-simulation__pace-menu" id="caption-pace-options"><p>Subtitle pace</p>{(["slow", "natural", "quick"] as const).map(value => <button key={value} type="button" aria-pressed={pace === value} onClick={() => { setPace(value); setPaceOpen(false); paceButton.current?.focus(); }}>{paceLabels[value]}<span aria-hidden="true">{pace === value ? "✓" : ""}</span></button>)}<small>Changes how quickly words appear.</small></div>}
