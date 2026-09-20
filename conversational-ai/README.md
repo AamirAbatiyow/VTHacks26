@@ -76,6 +76,58 @@ Open http://localhost:5173
 
 Vite proxies `/ws` → `ws://localhost:3001/ws`.
 
+## Deploy one frontend + backend app on Fly.io
+
+Production uses one Fly Machine and one public origin:
+
+- Express serves `client/dist` at `/` and handles React deep links.
+- The same process serves `/health`, `/stutter-models`, and `/ws`.
+- Browser WebSockets therefore upgrade on the same HTTPS origin (`wss://.../ws`);
+  there is no public Vite server and no client-side API URL to configure.
+- The image includes the CNN and two-head ONNX models and the Timescale CA.
+
+The repository-root `fly.toml` targets the app name `vocally-vthacks26` in `iad`.
+Create the app once:
+
+```bash
+fly auth login
+fly apps create vocally-vthacks26
+```
+
+Set server-only secrets from the values in your local `.env`. Do not put these
+values in `fly.toml`, the Docker image, or a `VITE_` variable:
+
+```bash
+fly secrets set \
+  GEMINI_API_KEY='...' \
+  ELEVENLABS_API_KEY='...' \
+  ELEVENLABS_VOICE_ID='...' \
+  DATABASE_URL='postgres://...'
+```
+
+Deploy from the `VTHacks26/` repository root:
+
+```bash
+fly deploy
+fly status
+fly logs
+fly open
+```
+
+Running `npm run deploy:fly` from `conversational-ai/` is also supported; that
+script delegates to the repository-root deployment context.
+
+Fly builds both workspaces in the Docker build. Before traffic moves to a new
+release, the release command initializes the PostgreSQL/Timescale schema using
+the compiled analytics CLI. The app stays at one running Machine because an
+auto-stopped Machine adds noticeable delay to the first WebSocket connection.
+The `/health` check controls rollout health.
+
+The fallback SQLite path is `/data/analytics.sqlite`, but the container
+filesystem is ephemeral and no Fly volume is configured. Keep `DATABASE_URL`
+set for durable analytics. If the app name or region changes, edit `app` or
+`primary_region` in `fly.toml` before creating/deploying the app.
+
 ## Analytics: local SQLite, optional Tiger Data PostgreSQL
 
 The server records session IDs, the profile name, conversation date and duration,
@@ -288,13 +340,6 @@ Per turn (monotonic clocks, no fabricated values):
 
 UI shows STT (T1−T0), Gemini (T3−T2), TTS (T5−T4), and total perceived (≈ T6−T0).
 
-## Utterance waveform
-
-Each finalized user turn ships a **1-D amplitude signal** derived from the
-original microphone PCM (not from the transcript text). The server downsamples
-the utterance to ~240 peak-signed samples in `[-1, 1]` and the UI draws it under
-the USER line.
-
 ## Stutter event detection
 
 ```
@@ -350,7 +395,7 @@ conversational-ai/
     websocket/session.ts
     services/{scribe,gemini,elevenlabs}.ts
     conversation/{ConversationManager,TextChunker,TurnTimeline,prompt}.ts
-    analysis/{SpeechAnalyzer,StutterClassifier,UtteranceCapture,signal1d}.ts
+    analysis/{SpeechAnalyzer,StutterClassifier,UtteranceCapture}.ts
     models/stutter.onnx        # trained artifact (see ml/stutter)
   client/src/
     hooks/useVoiceSession.ts

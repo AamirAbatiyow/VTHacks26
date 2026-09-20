@@ -118,8 +118,10 @@ lost 0.12 AUC on that class alone.
 
 ```bash
 ../.venv/bin/python train_twohead.py --data <dir> --out artifacts_twohead --device mps
-../.venv/bin/python compare_twohead.py --data <dir> --device mps
 ```
+
+The head-to-head comparison that produced the numbers below was run with
+`compare_twohead.py`, now in `archive/ml/stutter/`.
 
 `--detach` cannot be combined with `--device mps`: daemonizing calls `setsid()`,
 which leaves the Mach bootstrap namespace and makes Metal's shader compiler
@@ -205,50 +207,6 @@ step asserts PyTorch and ONNX agree to within 1e-3.
 A sidecar `stutter.json` carries the label order, sample rate, and tuned
 thresholds.
 
-## Export — vocametrix (open-source comparison model)
-
-`vocametrix/wav2vec2-xlsr-53-stuttering-classification` (see `vocametrix.py`,
-`eval_vocametrix.py`) can be exported to the *same* ONNX contract as our CNN,
-so the Node server treats it as just another registered model — same
-`waveform -> logits` I/O, same sidecar `.json` shape, zero server code
-differences:
-
-```bash
-../.venv/bin/python export_onnx_vocametrix.py \
-  --data /path/to/sep28k_data \
-  --out ../../conversational-ai/server/models/stutter_vocametrix.onnx
-```
-
-vocametrix is single-label softmax (6 mutually exclusive classes), not
-multi-label like the CNN. The export bakes softmax -> inverse-sigmoid into
-the graph (`logit = ln(p / (1-p))`) so `sigmoid(logits)` reproduces its
-softmax probabilities exactly — `StutterClassifier.ts` doesn't need to know
-which activation a given model natively uses. Its native window is 4s
-(64000 samples @ 16kHz) rather than the CNN's 3s; that's carried in the
-sidecar `.json`'s `clipSamples` and the server reads it generically, so no
-code change is needed for the different window size.
-
-Before trusting the export, the script re-runs a handful of val clips
-through both the exported graph *and* `vocametrix.py`'s own HF pipeline and
-asserts they agree to 1e-3 — catches any mismatch in the hand-rolled
-zero-mean/unit-variance normalization immediately instead of shipping a
-silently-wrong model. Pass `--data` to also tune per-label thresholds on the
-val split (same procedure `train.py` uses for the CNN); omit it to write
-default 0.5 thresholds you can hand-edit later in `stutter_vocametrix.json`.
-
-Once exported, it's live in the app immediately: `modelRegistry.ts` already
-lists a `vocametrix` entry pointing at this file, so it appears in the
-client's model dropdown / is selectable via `STUTTER_MODEL=vocametrix` with
-no further edits.
-
-## Trying it on a file
-
-```bash
-../.venv/bin/python predict.py \
-  --model ../../conversational-ai/server/models/stutter.onnx \
-  --audio "../../audio samples/st1.wav"
-```
-
 ## How the server uses it
 
 `server/src/analysis/StutterClassifier.ts` loads the ONNX model once per process
@@ -262,27 +220,15 @@ Inference runs **concurrently with the LLM response**, not in front of it, so it
 adds no latency to the spoken reply. If the model file is missing the classifier
 disables itself and the voice pipeline runs unchanged.
 
-## Split an audio file into three-second clips and classify each one
+## Archived tooling
 
-From the repository root (uses the existing Node server dependencies):
+This directory now holds only what produces the two shipped models. The
+research and diagnostic tooling moved to `archive/ml/stutter/` and still runs
+from there if you copy it back alongside `model.py` and `data.py`:
 
-```bash
-node --import ./conversational-ai/node_modules/tsx/dist/loader.mjs \
-  ml/stutter/classify_clips.ts \
-  --audio "audio samples/IMG_4042.mp3" \
-  --out "audio samples/IMG_4042_clips_new"
-```
-
-Compressed input uses FFmpeg. On machines without FFmpeg, pass
-`--decoder-library /absolute/path/to/libmpg123` to use `decode_mp3.py` with
-Python's standard library and an existing native mpg123 decoder. PCM 16-bit
-WAV input needs neither decoder.
-
-The script writes non-overlapping, three-second mono WAV files at the decoded
-sample rate and classifies each using the actual `StutterClassifier` server
-implementation, including its resampling, silence gate, thresholds, and optional
-two-head fluency model. The last clip is zero-padded; its original end timestamp
-and padding duration are recorded. It refuses to overwrite a nonempty output
-directory. `results.csv` contains timestamps, detected labels, all six model
-scores, and fluency; `results.json` also includes model metadata and per-window
-outputs. Labels are independent and can overlap, including Fluent.
+| File | What it did |
+| --- | --- |
+| `benchmark.py`, `analyze_benchmark.py`, `bench_memory.py` | A/B benchmark of the CNN against a wav2vec2-XLSR-53 baseline: latency, footprint, accuracy, significance tests |
+| `compare_twohead.py` | Paired head-to-head of the single-head and two-head models |
+| `vocametrix.py`, `eval_vocametrix.py`, `export_onnx_vocametrix.py` | An alternative wav2vec2 model that was never shipped; its `.onnx` was not exported into `server/models/` |
+| `predict.py`, `decode_mp3.py`, `classify_clips.ts` | Ad-hoc inference on a single file or a folder of clips |

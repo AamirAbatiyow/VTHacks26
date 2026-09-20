@@ -1,0 +1,39 @@
+app = "vocally-vthacks26"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "3001"
+  NODE_ENV = "production"
+
+# Runs from compiled JavaScript, so the production image does not need tsx or
+# TypeScript. It is safe to run repeatedly and initializes the Timescale schema
+# before a new release receives traffic.
+[deploy]
+  release_command = "node server/dist/server/src/analytics/cli.js migrate --timescale"
+
+[http_service]
+  internal_port = 3001
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 50
+    hard_limit = 100
+
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "15s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"

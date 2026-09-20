@@ -1,3 +1,4 @@
+// node:sqlite is only stable from Node 24; see the engines field in package.json.
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import path from "node:path";

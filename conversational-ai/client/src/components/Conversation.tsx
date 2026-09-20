@@ -40,11 +40,11 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
   const paceRef = useRef<HTMLDivElement>(null);
   const paceButton = useRef<HTMLButtonElement>(null);
   const startButton = useRef<HTMLButtonElement>(null);
-  const busy = session.sessionActive || session.isStarting || session.connected;
+  const busy = session.sessionActive || session.isStarting || session.connected || session.isEnding;
   const selectedMode = modes.find(item => item.id === mode)!;
   const latestAssistant = [...session.transcripts].reverse().find(entry => entry.role === "assistant");
   const captionText = hasPreview ? previewText : session.assistantStreaming || latestAssistant?.text || "";
-  const captionId = hasPreview ? `preview-${previewId}` : session.activeGenerationId || latestAssistant?.id || "idle";
+  const captionId = hasPreview ? `preview-${previewId}` : session.assistantUtteranceId || latestAssistant?.id || "idle";
   const speaking = session.assistantSpeaking || previewing;
   const status = previewing ? "Animation preview" : session.isStarting ? "Getting ready…" : session.assistantSpeaking ? "Vocally is speaking" : session.sessionActive ? session.micMuted ? "Microphone is muted" : session.activeGenerationId ? "A moment to think…" : "Listening to you" : "Ready when you are";
 
@@ -69,19 +69,19 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
     window.requestAnimationFrame(() => startButton.current?.focus());
   }, []);
 
-  function startOrEnd() {
+  async function startOrEnd() {
     setPreviewing(false);
     setHasPreview(false);
-    if (busy) { session.endConversation(); camera.stop(); }
+    if (busy) { camera.stop(); await session.endConversation(); }
     else void session.startConversation({ ...initialConfig, conversationMode: mode });
   }
-  function returnToDashboard() { session.endConversation(); camera.stop(); onBack?.(); }
+  async function returnToDashboard() { camera.stop(); await session.endConversation(); onBack?.(); }
 
   return (
     <div className="therapy-simulation" id="conversation" data-sidebar={sidebarOpen ? "open" : "closed"} tabIndex={-1}>
       <header className="therapy-simulation__header">
         <div className="therapy-simulation__identity"><span className="therapy-simulation__wordmark"><VocallyWordmark /></span><span className="therapy-simulation__header-divider" /><span className="therapy-simulation__page-name">Therapy simulation</span></div>
-        <div className="therapy-simulation__header-actions"><span className="therapy-simulation__private-note"><SimulationIcon name="spark" />A little practice. A little possibility.</span>{onBack && <button className="therapy-simulation__progress" onClick={returnToDashboard}><SimulationIcon name="chart" />Your progress<span aria-hidden="true">↗</span></button>}</div>
+        <div className="therapy-simulation__header-actions"><span className="therapy-simulation__private-note"><SimulationIcon name="spark" />A little practice. A little possibility.</span>{onBack && <button className="therapy-simulation__progress" onClick={() => void returnToDashboard()} disabled={session.isEnding}><SimulationIcon name="chart" />Your progress<span aria-hidden="true">↗</span></button>}</div>
       </header>
       <div className="therapy-simulation__layout">
         <aside className="therapy-simulation__sidebar" aria-label="Conversation settings">
@@ -95,7 +95,7 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
             <div className="therapy-simulation__sidebar-bottom">
               <div className="therapy-simulation__invitation"><span aria-hidden="true">✳</span><p>No perfect words needed.<br />Just begin where you are.</p></div>
               <div className="therapy-simulation__start-area" data-guide={tourOpen && tourStep === 2}>
-                <button ref={startButton} type="button" className="therapy-simulation__start" onClick={startOrEnd}><SimulationIcon name={busy ? "stop" : "play"} />{session.isStarting ? "Cancel" : busy ? "End session" : "Start session"}<span aria-hidden="true">{busy ? "" : "↗"}</span></button>
+                <button ref={startButton} type="button" className="therapy-simulation__start" onClick={() => void startOrEnd()} disabled={session.isEnding}><SimulationIcon name={busy ? "stop" : "play"} />{session.isEnding ? "Saving session…" : session.isStarting ? "Cancel" : busy ? "End session" : "Start session"}<span aria-hidden="true">{busy ? "" : "↗"}</span></button>
                 <p className="therapy-simulation__mic-note">{busy ? "Take all the time you need." : "Your microphone connects when you start."}</p>
               </div>
               <div className="therapy-simulation__tools" data-guide={tourOpen && tourStep === 1}>
@@ -118,7 +118,7 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
             {camera.stream && <div className="therapy-simulation__camera"><video ref={camera.videoRef} autoPlay muted playsInline aria-label="Your camera preview" /><span>Only visible to you</span><button aria-label="Close camera preview" onClick={camera.stop}>×</button></div>}
             <div className="therapy-simulation__stage-footer"><span className="therapy-simulation__stage-note"><SimulationIcon name="sound" />{previewing ? "Visual preview · no audio" : session.assistantSpeaking ? "Follow the words. Find your rhythm." : "A quiet space for your voice."}</span>{session.assistantSpeaking ? <button className="therapy-simulation__preview" onClick={session.manualInterrupt}><SimulationIcon name="stop" />Pause reply</button> : !busy && <button className="therapy-simulation__preview" onClick={() => { if (previewing) setPreviewing(false); else { setHasPreview(true); setPreviewId(id => id + 1); setPreviewing(true); } }}><SimulationIcon name={previewing ? "stop" : "play"} />{previewing ? "Stop preview" : "Preview animation"}</button>}</div>
           </section>
-          <section className="therapy-simulation__captions" aria-labelledby="captions-label"><div className="therapy-simulation__caption-heading"><p id="captions-label" className="therapy-simulation__eyebrow"><SimulationIcon name="captions" />{hasPreview ? "Preview subtitles" : "Live subtitles"}</p><span>{paceLabels[pace]} pace</span></div><VoiceCaptions text={captionText} utteranceId={captionId} speaking={speaking} pace={pace} placeholder="Your companion’s words will appear here." /></section>
+          <section className="therapy-simulation__captions" aria-labelledby="captions-label"><div className="therapy-simulation__caption-heading"><p id="captions-label" className="therapy-simulation__eyebrow"><SimulationIcon name="captions" />{hasPreview ? "Preview subtitles" : "Live subtitles"}</p><span>{paceLabels[pace]} pace</span></div><VoiceCaptions text={captionText} utteranceId={captionId} speaking={speaking} complete={hasPreview || Boolean(latestAssistant?.id === captionId)} interrupted={Boolean(latestAssistant?.id === captionId && latestAssistant.interrupted)} pace={pace} placeholder="Your companion’s words will appear here." /></section>
           <footer className="therapy-simulation__footer"><span>{session.interimText ? `You: ${session.interimText}` : "A little space to pause, practice, and grow."}</span><span><i aria-hidden="true" />{selectedMode.name} mode</span></footer>
         </div>
       </div>

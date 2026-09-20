@@ -1,22 +1,25 @@
-import type { ConversationMode } from "@shared/events";
+import type { SessionSummary } from "@shared/sessionSummary";
+export type PracticeSession = SessionSummary;
 
-export type PracticeSession = {
-  id: string;
-  startedAt: string;
-  seconds: number;
-  turns: number;
-  mode: ConversationMode;
-};
 const modes = ["default", "friendly", "informative", "critical", "conversation", "business"];
 const key = (name: string) => `vocally-practice-history-v2:${encodeURIComponent(name.trim().toLowerCase())}`;
+
+export function isPracticeSession(s: unknown): s is PracticeSession {
+  if (!s || typeof s !== "object") return false;
+  const value = s as PracticeSession;
+  if (typeof value.id !== "string" || typeof value.startedAt !== "string" || !Number.isFinite(Date.parse(value.startedAt)) ||
+    !Number.isFinite(value.seconds) || value.seconds < 0 || !Number.isInteger(value.turns) || value.turns < 0 || !modes.includes(value.mode)) return false;
+  const a = value.analysis;
+  return a === undefined || (a !== null && Number.isInteger(a.analyzedTurns) && a.analyzedTurns >= 0 && a.analyzedTurns <= value.turns &&
+    Number.isInteger(a.flaggedTurns) && a.flaggedTurns >= 0 && a.flaggedTurns <= a.analyzedTurns &&
+    a.categories !== null && typeof a.categories === "object" && Object.values(a.categories).every(n => Number.isInteger(n) && n >= 0 && n <= a.analyzedTurns));
+}
 
 export function readPracticeHistory(name: string): PracticeSession[] {
   try {
     const data: unknown = JSON.parse(localStorage.getItem(key(name)) ?? "[]");
     if (!Array.isArray(data)) return [];
-    return data.filter((s): s is PracticeSession => s && typeof s.id === "string" &&
-      typeof s.startedAt === "string" && Number.isFinite(Date.parse(s.startedAt)) &&
-      Number.isFinite(s.seconds) && s.seconds >= 0 && Number.isInteger(s.turns) && s.turns >= 0 && modes.includes(s.mode));
+    return data.filter(isPracticeSession);
   } catch { return []; }
 }
 

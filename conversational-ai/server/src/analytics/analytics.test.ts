@@ -12,9 +12,7 @@ import type { StutterAnalysis } from "../../../shared/events.js";
 
 test("projection excludes transcripts, audio, provider details, and free-form errors", () => {
   const projected = [
-    projectEvent({ type: "transcript_final", turnId: "x", text: "private child words", signal: {
-      samples: [0.2, 0.3], durationMs: 1200, sourceSampleRate: 16000,
-    } }),
+    projectEvent({ type: "transcript_final", turnId: "x", text: "private child words", durationMs: 1200 }),
     projectEvent({ type: "assistant_text_final", generationId: "g", text: "private reply" }),
     projectEvent({ type: "provider_status", provider: "scribe", status: "error", detail: "secret token" }),
     projectEvent({ type: "error", code: "scribe", message: "secret token" }),

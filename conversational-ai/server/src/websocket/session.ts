@@ -1,3 +1,4 @@
+import { SessionSummaryCollector } from "../../../shared/sessionSummary.js";
 import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import type { AnalyticsTracker } from "../analytics/AnalyticsTracker.js";
@@ -26,7 +27,6 @@ import {
   type SpeechAnalyzer,
 } from "../analysis/SpeechAnalyzer.js";
 import { UtteranceCapture } from "../analysis/UtteranceCapture.js";
-import { pcm16ToSignal1d } from "../analysis/signal1d.js";
 import { StutterClassifier } from "../analysis/StutterClassifier.js";
 import { stutterAnalysisToAssessment } from "../analysis/StutteringAssessment.js";
 import { DEFAULT_STUTTER_MODEL_ID } from "../analysis/modelRegistry.js";
@@ -83,6 +83,9 @@ export class VoiceSession {
   private closed = false;
   private readonly connectedAt = performance.now();
   private conversationStartedAt: number | null = null;
+  private summary: SessionSummaryCollector | null = null;
+  private pendingAnalyses = new Set<Promise<SpeechAnalysisMetadata | undefined>>();
+  private latestTurn = 0;
 
   constructor(
     ws: WebSocket,
@@ -338,6 +341,7 @@ export class VoiceSession {
     });
     try {
       await this.elevenLabs.ensureConnected();
+      if (this.closed) return;
       this.send({
         type: "provider_status",
         provider: "elevenlabs",
@@ -353,6 +357,7 @@ export class VoiceSession {
       // Non-fatal for session start — TTS may retry later
     }
 
+    if (this.closed) return;
     this.send({
       type: "provider_status",
       provider: "scribe",
@@ -414,6 +419,7 @@ export class VoiceSession {
 
     try {
       await this.scribe.connect();
+      if (this.closed) return;
     } catch (err) {
       this.send({
         type: "provider_status",
@@ -427,6 +433,7 @@ export class VoiceSession {
         message: String(err),
         recoverable: false,
       });
+      await this.cleanup("scribe_connect_failed");
       return;
     }
 
@@ -438,6 +445,7 @@ export class VoiceSession {
     });
 
     this.conversationStartedAt = performance.now();
+    this.summary = new SessionSummaryCollector(this.sessionId, new Date().toISOString(), config.conversationMode ?? "default");
     this.send({
       type: "session_started",
       sessionId: this.sessionId,
@@ -469,7 +477,9 @@ export class VoiceSession {
     text: string,
     lastWordEndSeconds: number | null,
   ): Promise<void> {
-    if (!this.conversation) return;
+    if (!this.conversation || this.closed || !text.trim()) return;
+    const conversation = this.conversation;
+    const turnSequence = ++this.latestTurn;
 
     const t0 =
       lastWordEndSeconds != null
@@ -478,13 +488,13 @@ export class VoiceSession {
 
     // Original mic PCM for this utterance — not the transcript.
     const micSnapshot = this.utterance.take();
-    const signal = pcm16ToSignal1d(micSnapshot, AUDIO_SAMPLE_RATE_IN);
-    const turnId = randomUUID();
-    this.send({ type: "transcript_final", text, turnId, signal });
-    logger.info(
-      "AUDIO",
-      `utterance signal: ${signal.samples.length} pts, ${signal.durationMs}ms`,
+    const durationMs = Math.round(
+      (micSnapshot.length / 2 / AUDIO_SAMPLE_RATE_IN) * 1000,
     );
+    const turnId = randomUUID();
+    this.summary?.addTurn(turnId);
+    this.send({ type: "transcript_final", text, turnId, durationMs });
+    logger.info("AUDIO", `utterance captured: ${durationMs}ms`);
 
     // Stutter detection is awaited BEFORE the Gemini call so this turn's
     // reply can actually react to what was just detected — see
@@ -495,9 +505,11 @@ export class VoiceSession {
     // (e.g. vocametrix) makes that trade-off feel bad in practice, switch
     // the session back to the CNN or two-head model via the dropdown / the
     // STUTTER_MODEL env var — no code change needed either way.
-    const speechAnalysis = await this.runSpeechAnalysis(micSnapshot, text, turnId);
-
-    await this.conversation.handleUserTurn(text, { t0PerfMs: t0, speechAnalysis });
+    const pending = this.runSpeechAnalysis(micSnapshot, text, turnId);
+    this.pendingAnalyses.add(pending);
+    const speechAnalysis = await pending.finally(() => this.pendingAnalyses.delete(pending));
+    if (this.closed || turnSequence !== this.latestTurn) return;
+    await conversation.handleUserTurn(text, { t0PerfMs: t0, speechAnalysis });
   }
 
   /**
@@ -516,7 +528,8 @@ export class VoiceSession {
         micSnapshot,
         AUDIO_SAMPLE_RATE_IN,
       );
-      if (analysis && !this.closed) {
+      if (analysis) {
+        this.summary?.addAnalysis(turnId, analysis);
         const hits = analysis.events
           .filter((e) => e.detected && e.label !== "Fluent")
           .map((e) => `${e.label} ${e.probability.toFixed(2)}`);
@@ -568,10 +581,10 @@ export class VoiceSession {
   async cleanup(reason: string): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    const conversationDurationMs = this.conversationStartedAt == null ? null : Math.round(performance.now() - this.conversationStartedAt);
     this.analytics?.track(this.sessionId, { type: "session_ended", properties: {
       reason, durationMs: Math.round(performance.now() - this.connectedAt),
-      conversationDurationMs: this.conversationStartedAt == null ? null
-        : Math.round(performance.now() - this.conversationStartedAt),
+      conversationDurationMs,
     } });
     logger.info("SESSION", `cleanup: ${reason}`);
 
@@ -601,7 +614,18 @@ export class VoiceSession {
     this.elevenLabs = null;
     this.conversation = null;
 
-    this.send({ type: "session_ended", sessionId: this.sessionId });
+    // Let already-running model inference finish, without hanging navigation.
+    if (this.pendingAnalyses.size) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([
+        Promise.allSettled([...this.pendingAnalyses]),
+        new Promise(resolve => { timer = setTimeout(resolve, 1500); }),
+      ]);
+      clearTimeout(timer);
+    }
+    this.send({ type: "session_ended", sessionId: this.sessionId,
+      summary: this.summary?.snapshot(conversationDurationMs == null ? 0 : conversationDurationMs / 1000, "server"),
+    });
     this.send({
       type: "provider_status",
       provider: "session",

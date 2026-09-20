@@ -19,7 +19,15 @@
   transform-origin: 52% 49%;
 }
 
-.therapy-topography[data-speaking="true"] .therapy-topography__contour {
+/*
+ * Only the six heavy contours breathe. A transform on an SVG group cannot be
+ * promoted to the compositor, so every animated group forces its paths to be
+ * re-rasterized each frame; animating all thirty halves the frame rate and the
+ * ripple visibly stutters. Six holds a steady 60fps, and because these are the
+ * same lines drawn with the heavier stroke, the motion still reads across the
+ * whole map. will-change does not help here — it was measured.
+ */
+.therapy-topography[data-speaking="true"] .therapy-topography__contour--major {
   animation: vocally-contour-pulse var(--contour-duration) ease-in-out var(--contour-delay) infinite;
 }
 
@@ -57,7 +65,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .therapy-topography[data-speaking="true"] .therapy-topography__contour,
+  .therapy-topography[data-speaking="true"] .therapy-topography__contour--major,
   .therapy-topography[data-speaking="true"] .therapy-topography__heart {
     animation: none;
   }

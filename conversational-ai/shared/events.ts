@@ -1,3 +1,4 @@
+import type { SessionSummary } from "./sessionSummary.js";
 /**
  * Shared WebSocket event protocol between browser and Node server.
  * Single source of truth — imported by both client and server.
@@ -110,6 +111,7 @@ export interface SessionStartedEvent {
 export interface SessionEndedEvent {
   type: "session_ended";
   sessionId: string;
+  summary?: SessionSummary;
 }
 
 export interface ProviderStatusEvent {
@@ -132,19 +134,12 @@ export interface TranscriptInterimEvent {
   text: string;
 }
 
-/** Downsampled 1-D waveform of the original microphone utterance. */
-export interface SpeechSignal {
-  /** Peak-signed amplitude in [-1, 1]. */
-  samples: number[];
-  durationMs: number;
-  sourceSampleRate: number;
-}
-
 export interface TranscriptFinalEvent {
   type: "transcript_final";
   text: string;
   turnId: string;
-  signal?: SpeechSignal;
+  /** Spoken length of the captured utterance, kept for analytics. */
+  durationMs?: number;
 }
 
 /** One 3 s analysis window scored by the stutter classifier. */
@@ -219,13 +214,6 @@ export interface TurnMetricsEvent {
   metrics: TurnMetrics;
 }
 
-export interface LogEvent {
-  type: "log";
-  level: "info" | "warn" | "error";
-  tag: string;
-  message: string;
-}
-
 export interface ServerPongEvent {
   type: "pong";
   t: number;
@@ -247,7 +235,6 @@ export type ServerJsonEvent =
   | InterruptedEvent
   | ErrorEvent
   | TurnMetricsEvent
-  | LogEvent
   | ServerPongEvent;
 
 // ---------------------------------------------------------------------------

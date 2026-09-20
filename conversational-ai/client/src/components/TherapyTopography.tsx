@@ -72,7 +72,7 @@ export function TherapyTopography({ speaking, previewing = false }: TherapyTopog
         {[...CONTOURS].reverse().map(({ index, path, weight, opacity }) => (
           <g
             key={index}
-            className="therapy-topography__contour"
+            className={`therapy-topography__contour${index % 5 === 0 ? " therapy-topography__contour--major" : ""}`}
             style={{
               "--contour-delay": `${-index * 0.15}s`,
               "--contour-duration": `${5.8 + (index % 4) * 0.3}s`,

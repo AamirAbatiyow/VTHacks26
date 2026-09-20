@@ -1,28 +1,23 @@
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { serverRoot } from "../paths.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const modelsDir = path.resolve(__dirname, "../../models");
+const modelsDir = path.join(serverRoot, "models");
 
 /**
  * Every registered model MUST export to the same ONNX contract that
  * StutterClassifier.ts already assumes:
  *   input  "waveform" float32 [batch, clipSamples]  (clipSamples comes from
- *           the sidecar .json — the CNN uses 48000 = 3s @ 16kHz, vocametrix
- *           uses 64000 = 4s @ 16kHz, its native window; StutterClassifier.ts
- *           reads clipSamples generically so this can differ per model)
+ *           the sidecar .json — the CNN uses 48000 = 3s @ 16kHz;
+ *           StutterClassifier.ts reads clipSamples generically so this can
+ *           differ per model)
  *   output "logits"   float32 [batch, 6]             (sigmoid-able, same
  *           LABELS order as model.py: Prolongation, Block, SoundRep,
  *           WordRep, Interjection, Fluent)
  * plus a sidecar "<name>.json" with {labels, sampleRate, clipSamples,
  * thresholds}. Extra outputs/fields (e.g. "gate", gateThreshold) are ignored
- * here and are fine to include.
- *
- * The CNN (export_onnx.py) is naturally multi-label sigmoid. vocametrix
- * (export_onnx_vocametrix.py) is a single-label softmax classifier, so its
- * export bakes softmax -> inverse-sigmoid into the graph (logit = ln(p/(1-p)))
- * so sigmoid(logits) reproduces its softmax probabilities exactly — the
- * server never needs to know which activation a given model natively uses.
+ * here and are fine to include. A model whose activation is natively softmax
+ * should bake softmax -> inverse-sigmoid into its graph (logit = ln(p/(1-p)))
+ * so the server never needs to know which activation a given model uses.
  *
  * The two-head model (ml/stutter/export_onnx_twohead.py) exports BOTH a
  * standalone-compatible "logits" output (registered below as "twohead") AND
@@ -50,11 +45,6 @@ export const STUTTER_MODELS: StutterModelDescriptor[] = [
     modelPath: path.join(modelsDir, "stutter.onnx"),
   },
   {
-    id: "vocametrix",
-    label: "Vocametrix — wav2vec2-XLSR-53 (higher accuracy, higher latency)",
-    modelPath: path.join(modelsDir, "stutter_vocametrix.onnx"),
-  },
-  {
     id: "twohead",
     label: "Two-head cascade — fluent-gate + subclass (standalone)",
     modelPath: path.join(modelsDir, "stutter_gate.onnx"),
@@ -66,8 +56,7 @@ export const STUTTER_MODELS: StutterModelDescriptor[] = [
   // disables itself gracefully (see its load()) rather than crashing.
 ];
 
-export const DEFAULT_STUTTER_MODEL_ID: string =
-  process.env.STUTTER_MODEL?.trim() || STUTTER_MODELS[0].id;
+export const DEFAULT_STUTTER_MODEL_ID = "cnn";
 
 export function isKnownStutterModelId(id: string): boolean {
   return STUTTER_MODELS.some((m) => m.id === id);

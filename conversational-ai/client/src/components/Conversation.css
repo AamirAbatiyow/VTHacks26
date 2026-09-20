@@ -82,7 +82,7 @@
 .therapy-simulation__caption-heading p { display: flex; align-items: center; gap: 9px; }
 .therapy-simulation__caption-heading svg { width: 16px; height: 16px; }
 .therapy-simulation__caption-heading > span { font-size: 9px; color: #718378; background: #eef4ed; border-radius: 15px; padding: 4px 9px; }
-.therapy-simulation__captions .voice-captions { margin: 16px 0 0; min-height: 52px; padding: 0; color: var(--therapy-ink); }
+.therapy-simulation__captions .voice-captions { margin: 16px 0 0; padding: 0; color: var(--therapy-ink); }
 .therapy-simulation__footer { display: flex; justify-content: space-between; align-items: start; gap: 20px; padding: 0 4px; font-size: 9px; color: #6f8375; }
 .therapy-simulation__footer > span:first-child { max-width: 78%; overflow-wrap: anywhere; }
 .therapy-simulation__footer > span:last-child { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }

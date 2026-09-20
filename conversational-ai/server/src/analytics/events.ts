@@ -16,7 +16,7 @@ export function projectEvent(event: ServerJsonEvent): AnalyticsEvent | null {
         utteranceId: event.turnId,
         characters: event.text.length,
         words: event.text.trim().split(/\s+/).filter(Boolean).length,
-        durationMs: event.signal?.durationMs ?? null,
+        durationMs: event.durationMs ?? null,
       } };
     case "assistant_text_final":
       return { type: event.type, generationId: event.generationId, properties: {

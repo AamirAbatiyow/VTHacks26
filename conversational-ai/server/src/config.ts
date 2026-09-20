@@ -1,11 +1,10 @@
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { serverRoot, projectRoot } from "./paths.js";
 import dotenv from "dotenv";
 import { DEFAULT_STUTTER_MODEL_ID } from "./analysis/modelRegistry.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.resolve(__dirname, "../.env") });
-dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+dotenv.config({ path: path.join(serverRoot, ".env"), quiet: true });
+dotenv.config({ path: path.join(projectRoot, ".env"), quiet: true });
 
 function required(name: string): string {
   const value = process.env[name]?.trim();
@@ -40,6 +39,6 @@ export function loadConfig(): AppConfig {
     elevenLabsModelId: process.env.ELEVENLABS_MODEL_ID?.trim() || "eleven_flash_v2_5",
     geminiModelPreference:
       process.env.GEMINI_MODEL?.trim() || "gemini-3.5-flash-lite",
-    defaultStutterModelId: DEFAULT_STUTTER_MODEL_ID,
+    defaultStutterModelId: process.env.STUTTER_MODEL?.trim() || DEFAULT_STUTTER_MODEL_ID,
   };
 }

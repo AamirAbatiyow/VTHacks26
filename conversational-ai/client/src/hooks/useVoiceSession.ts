@@ -2,17 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   BinaryMsgType,
   type ClientJsonMessage,
-  type ProviderStatus,
   type ServerJsonEvent,
   type SessionConfig,
-  type SpeechSignal,
-  type StutterAnalysis,
-  type TurnMetrics,
 } from "@shared/events";
 import { MicrophoneStream } from "../audio/recorder";
 import { StreamingAudioPlayer } from "../audio/player";
 import { EnergyVad } from "../audio/vad";
-import type { PracticeSession } from "../progress/practiceHistory";
+import { isPracticeSession, type PracticeSession } from "../progress/practiceHistory";
+import { SessionSummaryCollector } from "@shared/sessionSummary";
 
 export interface TranscriptEntry {
   id: string;
@@ -20,15 +17,6 @@ export interface TranscriptEntry {
   text: string;
   interim?: boolean;
   interrupted?: boolean;
-  signal?: SpeechSignal;
-  stutter?: StutterAnalysis;
-}
-
-export interface ProviderStatuses {
-  session: ProviderStatus;
-  scribe: ProviderStatus;
-  gemini: ProviderStatus;
-  elevenlabs: ProviderStatus;
 }
 
 export interface VoiceSessionState {
@@ -37,16 +25,24 @@ export interface VoiceSessionState {
   isStarting: boolean;
   assistantSpeaking: boolean;
   micMuted: boolean;
-  statuses: ProviderStatuses;
   transcripts: TranscriptEntry[];
   interimText: string;
   assistantStreaming: string;
   /** Last utterance identity, retained when playback drains or is interrupted. */
   assistantUtteranceId: string | null;
   activeGenerationId: string | null;
-  metrics: TurnMetrics | null;
   error: string | null;
-  logs: string[];
+}
+
+/**
+ * The browser cannot distinguish a stopped server from a network problem, but
+ * in development the usual cause is that only the client is running. Naming it
+ * saves a debugging detour; end users just get the plain message.
+ */
+function unreachableMessage(): string {
+  return import.meta.env.DEV
+    ? "Can’t reach the voice server on port 3001. Start it with `npm run dev` in conversational-ai/ (this runs the server and client together), then try again."
+    : "We couldn’t connect to your voice session. Please try again.";
 }
 
 function wsUrl(): string {
@@ -78,33 +74,25 @@ function decodeAssistantFrame(data: ArrayBuffer): {
   return { generationId, pcm };
 }
 
-const initialStatuses: ProviderStatuses = {
-  session: "idle",
-  scribe: "idle",
-  gemini: "idle",
-  elevenlabs: "idle",
-};
-
 export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => void) {
   const completionRef = useRef(onSessionComplete);
   completionRef.current = onSessionComplete;
-  const practiceRef = useRef<(PracticeSession & { clockStart: number }) | null>(null);
+  const practiceRef = useRef<{ collector: SessionSummaryCollector; clockStart: number; stoppedAt?: number } | null>(null);
   const practiceModeRef = useRef<PracticeSession["mode"]>("default");
+  const [isEnding, setIsEnding] = useState(false);
+  const endingRef = useRef<{ promise: Promise<void>; resolve: () => void; timer: ReturnType<typeof setTimeout> } | null>(null);
   const [state, setState] = useState<VoiceSessionState>({
     connected: false,
     sessionActive: false,
     isStarting: false,
     assistantSpeaking: false,
     micMuted: false,
-    statuses: initialStatuses,
     transcripts: [],
     interimText: "",
     assistantStreaming: "",
     assistantUtteranceId: null,
     activeGenerationId: null,
-    metrics: null,
     error: null,
-    logs: [],
   });
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -112,7 +100,6 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
   const playerRef = useRef<StreamingAudioPlayer | null>(null);
   const vadRef = useRef<EnergyVad | null>(null);
   const activeGenRef = useRef<string | null>(null);
-  const audioRecvAtRef = useRef<number | null>(null);
   const sessionVersionRef = useRef(0);
   const startingRef = useRef(false);
   const micMutedRef = useRef(false);
@@ -120,13 +107,6 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
   const cancelConnectRef = useRef<(() => void) | null>(null);
   const sessionReadyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const interruptedGenerationsRef = useRef(new Set<string>());
-
-  const pushLog = useCallback((line: string) => {
-    setState((s) => ({
-      ...s,
-      logs: [...s.logs.slice(-200), line],
-    }));
-  }, []);
 
   const sendJson = useCallback((msg: ClientJsonMessage) => {
     const ws = wsRef.current;
@@ -165,7 +145,6 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
     playerRef.current?.stop();
     playerRef.current = null;
     activeGenRef.current = null;
-    audioRecvAtRef.current = null;
   }, []);
 
   const closeConnection = useCallback(() => {
@@ -173,9 +152,14 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
     const practice = practiceRef.current;
     practiceRef.current = null;
     if (practice) {
-      const { clockStart, ...summary } = practice;
-      completionRef.current?.({ ...summary, seconds: Math.max(0, Math.round((performance.now() - clockStart) / 1000)) });
+      completionRef.current?.(practice.collector.snapshot(((practice.stoppedAt ?? performance.now()) - practice.clockStart) / 1000, "device"));
     }
+    if (endingRef.current) {
+      clearTimeout(endingRef.current.timer);
+      endingRef.current.resolve();
+      endingRef.current = null;
+    }
+    if (mountedRef.current) setIsEnding(false);
     sessionVersionRef.current += 1;
     startingRef.current = false;
     if (sessionReadyTimerRef.current) clearTimeout(sessionReadyTimerRef.current);
@@ -197,21 +181,26 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
     }
   }, [cleanupMedia]);
 
-  const endConversation = useCallback(() => {
+  const endConversation = useCallback((): Promise<void> => {
+    if (endingRef.current) return endingRef.current.promise;
+    const canFinish = practiceRef.current && wsRef.current?.readyState === WebSocket.OPEN;
+    cleanupMedia(); // Stop capture/playback immediately, but keep final events flowing.
+    if (practiceRef.current) practiceRef.current.stoppedAt = performance.now();
+    const reset = () => setState(s => ({ ...s, connected: false, sessionActive: false, isStarting: false,
+      assistantSpeaking: false, activeGenerationId: null, interimText: "", assistantStreaming: "" }));
+    if (!canFinish) {
+      sendJson({ type: "end_session" });
+      closeConnection();
+      reset();
+      return Promise.resolve();
+    }
+    setIsEnding(true);
+    let resolve!: () => void;
+    const promise = new Promise<void>(done => { resolve = done; });
+    endingRef.current = { promise, resolve, timer: setTimeout(() => { closeConnection(); reset(); }, 5000) };
     sendJson({ type: "end_session" });
-    closeConnection();
-    setState((s) => ({
-      ...s,
-      connected: false,
-      sessionActive: false,
-      isStarting: false,
-      assistantSpeaking: false,
-      activeGenerationId: null,
-      interimText: "",
-      assistantStreaming: "",
-      statuses: initialStatuses,
-    }));
-  }, [closeConnection, sendJson]);
+    return promise;
+  }, [cleanupMedia, closeConnection, sendJson]);
 
   const toggleMicrophone = useCallback(() => {
     const muted = !micMutedRef.current;
@@ -230,11 +219,11 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
         (ev.type === "assistant_text_delta" || ev.type === "assistant_speech_started" || ev.type === "assistant_speech_ended") &&
         interruptedGenerationsRef.current.has(ev.generationId)
       ) return;
+      if (endingRef.current && (ev.type.startsWith("assistant_") || ev.type === "user_speech_started")) return;
       switch (ev.type) {
         case "session_started":
           if (!practiceRef.current) practiceRef.current = {
-            id: ev.sessionId, startedAt: new Date().toISOString(), seconds: 0,
-            turns: 0, mode: practiceModeRef.current, clockStart: performance.now(),
+            collector: new SessionSummaryCollector(ev.sessionId, new Date().toISOString(), practiceModeRef.current), clockStart: performance.now(),
           };
           startingRef.current = false;
           if (sessionReadyTimerRef.current) clearTimeout(sessionReadyTimerRef.current);
@@ -244,11 +233,13 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
             sessionActive: true,
             isStarting: false,
             error: null,
-            statuses: { ...s.statuses, session: "ready" },
           }));
-          pushLog(`[SESSION] started ${ev.sessionId}`);
           break;
         case "session_ended":
+          if (ev.summary && isPracticeSession(ev.summary) && ev.summary.id === practiceRef.current?.collector.id) {
+            practiceRef.current = null;
+            completionRef.current?.(ev.summary);
+          }
           closeConnection();
           setState((s) => ({
             ...s,
@@ -259,62 +250,26 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
             activeGenerationId: null,
             assistantStreaming: "",
             interimText: "",
-            statuses: { ...initialStatuses, session: "closed" },
           }));
-          pushLog("[SESSION] ended");
-          break;
-        case "provider_status":
-          setState((s) => ({
-            ...s,
-            statuses: { ...s.statuses, [ev.provider]: ev.status },
-          }));
-          pushLog(
-            `[${ev.provider.toUpperCase()}] ${ev.status}${ev.detail ? `: ${ev.detail}` : ""}`,
-          );
           break;
         case "transcript_interim":
           setState((s) => ({ ...s, interimText: ev.text }));
           break;
         case "transcript_final":
-          if (practiceRef.current) practiceRef.current.turns += 1;
+          practiceRef.current?.collector.addTurn(ev.turnId);
           setState((s) => ({
             ...s,
             interimText: "",
             transcripts: [
               ...s.transcripts,
-              {
-                id: ev.turnId,
-                role: "user",
-                text: ev.text,
-                signal: ev.signal,
-              },
+              { id: ev.turnId, role: "user", text: ev.text },
             ],
           }));
-          pushLog(
-            `[USER] final: "${ev.text}"${
-              ev.signal
-                ? ` [${ev.signal.samples.length} pts, ${ev.signal.durationMs}ms]`
-                : ""
-            }`,
-          );
           break;
-        case "stutter_analysis": {
-          // Arrives after transcript_final; attach to the matching user turn.
-          setState((s) => ({
-            ...s,
-            transcripts: s.transcripts.map((t) =>
-              t.id === ev.turnId ? { ...t, stutter: ev.analysis } : t,
-            ),
-          }));
-          const hits = ev.analysis.events
-            .filter((e) => e.detected && e.label !== "Fluent")
-            .map((e) => `${e.label} ${e.probability.toFixed(2)}`);
-          pushLog(
-            `[STUTTER] ${hits.length ? hits.join(", ") : "none detected"} ` +
-              `(fluency ${ev.analysis.fluency.toFixed(2)}, ${ev.analysis.inferenceMs}ms)`,
-          );
+        case "stutter_analysis":
+          // Feeds the session summary the dashboard and report are built from.
+          practiceRef.current?.collector.addAnalysis(ev.turnId, ev.analysis);
           break;
-        }
         case "user_speech_started":
           // Server-side barge-in may also fire; client VAD usually already cleared.
           if (!micMutedRef.current && activeGenRef.current) {
@@ -325,7 +280,6 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
           if (activeGenRef.current !== ev.generationId) {
             activeGenRef.current = ev.generationId;
             playerRef.current?.setActiveGeneration(ev.generationId);
-            audioRecvAtRef.current = null;
             setState((s) => ({
               ...s,
               activeGenerationId: ev.generationId,
@@ -373,7 +327,6 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
           break;
         }
         case "assistant_speech_started":
-          if (activeGenRef.current !== ev.generationId) audioRecvAtRef.current = null;
           activeGenRef.current = ev.generationId;
           playerRef.current?.setActiveGeneration(ev.generationId);
           setState((s) => ({
@@ -382,7 +335,6 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
             assistantUtteranceId: ev.generationId,
             assistantStreaming: s.assistantUtteranceId === ev.generationId ? s.assistantStreaming : "",
           }));
-          pushLog("[PLAYBACK] assistant speech started");
           break;
         case "assistant_speech_ended":
           if (activeGenRef.current !== ev.generationId) break;
@@ -401,7 +353,6 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
                   ? null
                   : s.activeGenerationId,
             }));
-            pushLog("[PLAYBACK] finished");
           });
           playerRef.current?.markNoMoreAudio();
           break;
@@ -419,19 +370,7 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
             activeGenerationId: null,
             assistantSpeaking: false,
           }));
-          pushLog(`[USER] interrupted ${ev.generationId.slice(0, 8)}`);
           break;
-        case "turn_metrics": {
-          const m = { ...ev.metrics };
-          if (
-            audioRecvAtRef.current != null &&
-            m.playbackDelayMs == null
-          ) {
-            // playback delay filled on first play if not already
-          }
-          setState((s) => ({ ...s, metrics: m }));
-          break;
-        }
         case "error":
           // Startup cannot progress after a provider failure. Release the mic
           // and socket so Start can be retried immediately.
@@ -445,25 +384,20 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
               assistantSpeaking: false,
               activeGenerationId: null,
               assistantStreaming: "",
-              statuses: { ...initialStatuses, session: "error" },
             }));
           }
           setState((s) => ({ ...s, error: ev.message }));
-          pushLog(`[ERROR] ${ev.code}: ${ev.message}`);
-          break;
-        case "log":
-          pushLog(`[${ev.tag}] ${ev.message}`);
           break;
         default:
           break;
       }
     },
-    [closeConnection, interruptNow, pushLog],
+    [closeConnection, interruptNow],
   );
 
   const startConversation = useCallback(
     async (config: SessionConfig) => {
-      if (startingRef.current || wsRef.current) return;
+      if (startingRef.current || wsRef.current || endingRef.current) return;
       const version = ++sessionVersionRef.current;
       const isCurrent = () => mountedRef.current && version === sessionVersionRef.current;
       startingRef.current = true;
@@ -479,14 +413,6 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
         transcripts: [],
         interimText: "",
         assistantStreaming: "",
-        metrics: null,
-        logs: [],
-        statuses: {
-          session: "connecting",
-          scribe: "idle",
-          gemini: "idle",
-          elevenlabs: "idle",
-        },
       }));
       const player = new StreamingAudioPlayer();
       const mic = new MicrophoneStream();
@@ -523,29 +449,13 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
         });
         if (!isCurrent()) return;
         setState((s) => ({ ...s, connected: true }));
-        pushLog("[SESSION] connected");
 
         ws.onmessage = (evt) => {
           if (!isCurrent()) return;
           if (typeof evt.data !== "string") {
+            if (endingRef.current) return;
             const decoded = decodeAssistantFrame(evt.data as ArrayBuffer);
             if (!decoded || decoded.generationId !== activeGenRef.current) return;
-            if (audioRecvAtRef.current == null) audioRecvAtRef.current = performance.now();
-            player.setOnFirstPlay(() => {
-              if (!isCurrent()) return;
-              const recv = audioRecvAtRef.current;
-              if (recv != null) {
-                const playbackDelayMs = Math.round(performance.now() - recv);
-                setState((s) => {
-                  if (!s.metrics) return s;
-                  const totalMs = s.metrics.serverToFirstAudioMs != null
-                    ? s.metrics.serverToFirstAudioMs + playbackDelayMs : null;
-                  return { ...s, metrics: { ...s.metrics, playbackDelayMs, totalMs } };
-                });
-                pushLog(`[PLAYBACK] started (+${playbackDelayMs}ms after recv)`);
-              }
-              player.setOnFirstPlay(null);
-            });
             void player.playChunk(decoded.pcm, decoded.generationId).catch(() => {
               if (!isCurrent()) return;
               if (activeGenRef.current === decoded.generationId) interruptNow(decoded.generationId);
@@ -556,7 +466,7 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
           try {
             handleServerEvent(JSON.parse(evt.data) as ServerJsonEvent);
           } catch {
-            pushLog("[ERROR] malformed server event");
+            // A single unparseable frame is not worth interrupting the session.
           }
         };
         ws.onclose = () => {
@@ -572,7 +482,6 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
             assistantStreaming: "",
             interimText: "",
             error: "The voice connection closed. You can start again when you’re ready.",
-            statuses: { ...initialStatuses, session: "closed" },
           }));
         };
 
@@ -608,7 +517,6 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
             assistantSpeaking: false,
             activeGenerationId: null,
             error: "Your voice session took too long to start. Please try again.",
-            statuses: { ...initialStatuses, session: "error" },
           }));
         }, 30_000);
         sendJson({ type: "start_session", config });
@@ -623,11 +531,8 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
           isStarting: false,
           assistantSpeaking: false,
           activeGenerationId: null,
-          error: detail.startsWith("Microphone") ? detail
-            : "We couldn’t connect to your voice session. Please try again.",
-          statuses: { ...initialStatuses, session: "error" },
+          error: detail.startsWith("Microphone") ? detail : unreachableMessage(),
         }));
-        pushLog(`[ERROR] ${detail}`);
       } finally {
         // A permission prompt can resolve after Stop or navigation. Release
         // these local resources without touching a newer session’s refs.
@@ -641,7 +546,6 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
       closeConnection,
       handleServerEvent,
       interruptNow,
-      pushLog,
       sendJson,
     ],
   );
@@ -660,6 +564,7 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
 
   return {
     ...state,
+    isEnding,
     startConversation,
     endConversation,
     manualInterrupt,

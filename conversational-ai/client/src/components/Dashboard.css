@@ -103,3 +103,6 @@
 @media (max-width: 600px) {
   .progress-garden::before { background-position: 72% center; }
 }
+.progress-garden__analysis-note { color: var(--progress-muted); font-size: 0.85rem; line-height: 1.6; }
+.progress-garden__analysis-list { list-style: none; margin: 0; padding: 0; }
+.progress-garden__analysis-list li { display: flex; justify-content: space-between; gap: 1rem; padding: 0.6rem 0; border-bottom: 1px solid #e4eeea; font-size: 0.875rem; }

@@ -1,3 +1,6 @@
+import path from "node:path";
+import { existsSync } from "node:fs";
+import { projectRoot } from "./paths.js";
 import http from "node:http";
 import express from "express";
 import cors from "cors";
@@ -40,7 +43,7 @@ async function main(): Promise<void> {
   // optional "<name>_gate.onnx" two-head fluency gate) on first use, so
   // unused variants cost nothing until selected.
   const stutterModels = new Map(
-    STUTTER_MODELS.map((m) => [m.id, new StutterClassifier(m.modelPath)] as const),
+    STUTTER_MODELS.filter(m => existsSync(m.modelPath)).map((m) => [m.id, new StutterClassifier(m.id === "cnn" && process.env.STUTTER_MODEL_PATH ? path.resolve(process.env.STUTTER_MODEL_PATH) : m.modelPath)] as const),
   );
   logger.info(
     "ANALYSIS",
@@ -57,7 +60,7 @@ async function main(): Promise<void> {
   app.use(cors());
   app.get("/stutter-models", (_req, res) => {
     res.json({
-      models: STUTTER_MODELS.map(({ id, label }) => ({ id, label })),
+      models: STUTTER_MODELS.filter(m => stutterModels.has(m.id)).map(({ id, label }) => ({ id, label })),
       defaultId: config.defaultStutterModelId,
     });
   });
@@ -71,6 +74,22 @@ async function main(): Promise<void> {
     });
   });
 
+  // Serve the same built UI and WebSocket origin in production.
+  const clientDist = path.join(projectRoot, "client/dist");
+  const clientIndex = path.join(clientDist, "index.html");
+  if (existsSync(clientIndex)) {
+    app.use(express.static(clientDist));
+    // React owns client-side routes. Returning index.html for HTML navigation
+    // keeps refreshes and direct links on the same Fly app instead of 404ing.
+    // API routes above still win, and WebSocket upgrades bypass this handler.
+    app.use((req, res, next) => {
+      if (req.method !== "GET" || !req.accepts("html")) {
+        next();
+        return;
+      }
+      res.sendFile(clientIndex);
+    });
+  }
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server, path: "/ws" });
 

@@ -1,0 +1,20 @@
+.git
+.cursor
+archive
+ml
+audio samples
+dashboard-concept
+stutter.py
+
+conversational-ai/.env
+conversational-ai/.env.*
+!conversational-ai/.env.example
+conversational-ai/**/node_modules
+conversational-ai/**/dist
+conversational-ai/**/.vite
+conversational-ai/data
+conversational-ai/coverage
+
+*.log
+*.tsbuildinfo
+.DS_Store

@@ -1,6 +1,12 @@
+/*
+ * Room for three lines up front. Words arrive one at a time, and the stage
+ * above this block is flex:1 — so any growth here shrinks the stage and drags
+ * the whole animation upward mid-sentence. Reserving the space keeps both the
+ * placeholder and the longest expected reply inside a box that never resizes.
+ */
 .voice-captions {
   width: 100%;
-  min-height: 5rem;
+  min-height: 8rem;
   display: grid;
   align-items: center;
 }
