@@ -23,7 +23,7 @@ const guideKey = "vocally-simulation-guide-v2";
 const modes: { id: ConversationMode; name: string; detail: string; symbol: string }[] = [
   { id: "conversation", name: "Conversation", detail: "Everyday talk. If speech snags, we give the words time.", symbol: "◌" },
   { id: "exercises", name: "Speech Exercises", detail: "A technique chosen for you, then practiced out loud.", symbol: "✦" },
-  { id: "endless", name: "Endless", detail: "A living conversation. Keep going — we’ll rest it somewhere kind.", symbol: "∞" },
+  { id: "endless", name: "Endless", detail: "Ordinary talk with no clock. We keep going until it is time to rest.", symbol: "∞" },
 ];
 
 interface ExerciseOption {
@@ -292,7 +292,7 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
               </section>
             )}
             {mode === "endless" && (
-              <p className="therapy-simulation__rec-note therapy-simulation__endless-note">Keep the talk going. When it is time to rest, we’ll leave it on a kind beat — never on a miss.</p>
+              <p className="therapy-simulation__rec-note therapy-simulation__endless-note">Just talk. No timer. When it is time to rest, we’ll leave it on a kind beat.</p>
             )}
             {mode === "exercises" && (
               <section className="therapy-simulation__exercises" aria-labelledby="exercise-review-label">
@@ -325,7 +325,7 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
             )}
             <div className="therapy-simulation__sidebar-bottom">
               {mode === "conversation" && !sessionMinutes && <div className="therapy-simulation__invitation"><span aria-hidden="true">✳</span><p>No perfect words needed.<br />Just begin where you are.</p></div>}
-              {mode === "endless" && !busy && <div className="therapy-simulation__invitation"><span aria-hidden="true">∞</span><p>Speak as fully as you like.<br />We’ll catch the good sentences.</p></div>}
+              {mode === "endless" && !busy && <div className="therapy-simulation__invitation"><span aria-hidden="true">∞</span><p>Speak as fully as you like.<br />We’ll stay with you.</p></div>}
               <div className="therapy-simulation__start-area" data-guide={tourOpen && tourStep === 1}>
                 <button ref={startButton} type="button" className="therapy-simulation__start" onClick={() => void startOrEnd()} disabled={session.isEnding || wrappingUp || (!busy && !canStart)}><SimulationIcon name={busy ? "stop" : "play"} />{session.isEnding ? "Saving session…" : session.isStarting ? "Cancel" : wrappingUp ? "Closing…" : busy ? "End session" : "Start session"}<span aria-hidden="true">{busy ? "" : "↗"}</span></button>
                 <p className="therapy-simulation__mic-note">{busy ? wrappingUp ? mode === "endless" ? "We’ll leave it here — that was a good stretch." : "That’s all the time we have for today." : "Take all the time you need." : mode === "exercises" && !technique ? "Pick one of the three exercises to begin." : mode === "conversation" && !sessionMinutes ? "Choose a conversation length to begin." : "Your microphone connects when you start."}</p>

@@ -9,10 +9,11 @@ import type {
   StutterEventScore,
   StutterWindow,
 } from "../../../shared/events.js";
-import type {
-  AnalyzeInput,
-  SpeechAnalysisResult,
-  SpeechAnalyzer,
+import {
+  isLiveStutterLabel,
+  type AnalyzeInput,
+  type SpeechAnalysisResult,
+  type SpeechAnalyzer,
 } from "./SpeechAnalyzer.js";
 
 interface ModelMeta {
@@ -185,11 +186,33 @@ export class StutterClassifier implements SpeechAnalyzer {
       ),
     }));
 
-    // An event anywhere in the utterance counts, so aggregate with max.
+    // Per-window gate agreement when the two-head model is available: a type
+    // only counts in a window if that window is also above the any-stutter gate.
+    const gateThreshold = this.gateMeta?.gateThreshold ?? 0.5;
+    const gateProbs = gateOutput
+      ? Array.from(gateOutput.gate.data as Float32Array, (x) => sigmoid(x))
+      : null;
+
+    // One noisy 3s slice should not flag a longer turn — require two agreeing
+    // windows when the utterance covers more than one hop.
+    const minHits = windows.length >= 2 ? 2 : 1;
+
     const events: StutterEventScore[] = labels.map((label, c) => {
-      const probability = Math.max(...windows.map((w) => w.scores[c]));
       const threshold = this.meta!.thresholds[label] ?? DEFAULT_THRESHOLD;
-      return { label, probability: round3(probability), detected: probability >= threshold };
+      let hits = 0;
+      let probability = 0;
+      for (let i = 0; i < windows.length; i++) {
+        const score = windows[i]!.scores[c]!;
+        if (score > probability) probability = score;
+        const typeOk = score >= threshold;
+        const gateOk = gateProbs == null || (gateProbs[i] ?? 0) >= gateThreshold;
+        if (typeOk && gateOk) hits += 1;
+      }
+      return {
+        label,
+        probability: round3(probability),
+        detected: hits >= minHits,
+      };
     });
 
     const fluency = gateOutput
@@ -213,7 +236,7 @@ export class StutterClassifier implements SpeechAnalyzer {
       return { targetPhoneme: input.targetPhoneme, observations: [] };
     }
     const detected = analysis.events.filter(
-      (e) => e.detected && e.label !== "Fluent",
+      (e) => e.detected && isLiveStutterLabel(e.label),
     );
     return {
       targetPhoneme: input.targetPhoneme,

@@ -8,6 +8,7 @@ import {
 import { MicrophoneStream } from "../audio/recorder";
 import { StreamingAudioPlayer } from "../audio/player";
 import { EnergyVad } from "../audio/vad";
+import { playGreeting } from "../audio/sfx";
 import { isPracticeSession, type PracticeSession } from "../progress/practiceHistory";
 import { SessionSummaryCollector } from "@shared/sessionSummary";
 
@@ -137,6 +138,8 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
   const sessionReadyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const interruptedGenerationsRef = useRef(new Set<string>());
   const wrappingUpRef = useRef(false);
+  /** False until greeting finishes and session_started — blocks early mic frames. */
+  const micLiveRef = useRef(false);
 
   const sendJson = useCallback((msg: ClientJsonMessage) => {
     const ws = wsRef.current;
@@ -165,6 +168,7 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
   );
 
   const cleanupMedia = useCallback(() => {
+    micLiveRef.current = false;
     vadRef.current?.detach();
     vadRef.current = null;
     micRef.current?.stop();
@@ -321,7 +325,12 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
           break;
         case "stutter_analysis": {
           practiceRef.current?.collector.addAnalysis(ev.turnId, ev.analysis);
-          const flagged = ev.analysis.events.some((event) => event.detected && event.label !== "Fluent");
+          const flagged = ev.analysis.events.some(
+            (event) =>
+              event.detected &&
+              event.label !== "Fluent" &&
+              event.label !== "Interjection",
+          );
           setState((s) => flagged && practiceModeRef.current !== "endless"
             ? { ...s, stutterCue: nextStutterCue(s.stutterCue), stutterCueId: s.stutterCueId + 1 }
             : s);
@@ -456,6 +465,7 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
       const isCurrent = () => mountedRef.current && version === sessionVersionRef.current;
       startingRef.current = true;
       wrappingUpRef.current = false;
+      micLiveRef.current = false;
       practiceModeRef.current = config.conversationMode ?? "conversation";
       interruptedGenerationsRef.current.clear();
       setState((s) => ({
@@ -474,6 +484,18 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
       }));
       const player = new StreamingAudioPlayer();
       const mic = new MicrophoneStream();
+      const micGate = { session: false, greeting: false };
+      const openMicIfReady = () => {
+        if (micGate.session && micGate.greeting && isCurrent()) {
+          micLiveRef.current = true;
+        }
+      };
+      // Cover the silent connect wait; mic stays closed until this ends AND
+      // session_started arrives (avoids speaker leak and half-open Scribe).
+      void playGreeting().then(() => {
+        micGate.greeting = true;
+        openMicIfReady();
+      });
       try {
         playerRef.current = player;
         player.setOnPlaybackState((playing) => {
@@ -522,7 +544,12 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
             return;
           }
           try {
-            handleServerEvent(JSON.parse(evt.data) as ServerJsonEvent);
+            const message = JSON.parse(evt.data) as ServerJsonEvent;
+            if (message.type === "session_started") {
+              micGate.session = true;
+              openMicIfReady();
+            }
+            handleServerEvent(message);
           } catch {
             // A single unparseable frame is not worth interrupting the session.
           }
@@ -549,7 +576,12 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
         const media = mic.getMediaStream();
         media?.getAudioTracks().forEach((track) => { track.enabled = !micMutedRef.current; });
         mic.subscribe((pcm) => {
-          if (isCurrent() && !micMutedRef.current && ws.readyState === WebSocket.OPEN) {
+          if (
+            isCurrent() &&
+            micLiveRef.current &&
+            !micMutedRef.current &&
+            ws.readyState === WebSocket.OPEN
+          ) {
             ws.send(encodeMicFrame(pcm));
           }
         });

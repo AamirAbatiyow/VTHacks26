@@ -5,7 +5,7 @@ import { playSfx } from "../audio/sfx";
 const steps = [
   {
     title: "Three ways to practice.",
-    text: "Conversation is everyday talk with a timer. Speech Exercises walks you through one technique chosen for you. Endless is an untimed round that keeps going until it is time to rest.",
+    text: "Conversation is everyday talk with a timer. Speech Exercises walks you through one technique chosen for you. Endless is the same companionship with no clock — just talk until it is time to rest.",
     note: "Pick a mode in the sidebar whenever you are not in a session. Nothing is better or worse — they are different rooms.",
     icon: "spark" as const,
   },

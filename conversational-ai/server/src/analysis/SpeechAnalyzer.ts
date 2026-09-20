@@ -2,6 +2,22 @@ import type { SpeechAnalysisMetadata, StutterAnalysis } from "../../../shared/ev
 import type { StutteringAssessment } from "./StutteringAssessment.js";
 
 /**
+ * Labels that drive live coaching: overlay, Gemini [speech_signal], and Endless
+ * end. Interjection stays in the SSI-4 report via StutterAnalysis.detected but
+ * is too noisy for same-turn listener behavior.
+ */
+export const LIVE_STUTTER_LABELS = [
+  "Prolongation",
+  "Block",
+  "SoundRep",
+  "WordRep",
+] as const;
+
+export function isLiveStutterLabel(label: string): boolean {
+  return (LIVE_STUTTER_LABELS as readonly string[]).includes(label);
+}
+
+/**
  * Future phoneme / articulation analysis plug-in point.
  * DO NOT use Scribe transcripts as the pronunciation-analysis source —
  * analyze the original microphone PCM instead.
@@ -50,18 +66,16 @@ export function toMetadata(
 /**
  * Compacts a full per-window StutterAnalysis (from StutterClassifier.classify())
  * into the generic SpeechAnalysisMetadata shape carried on a conversation turn,
- * for feeding into ConversationManager.historyToGeminiContents(). Same
- * "detected, non-Fluent" filter StutterClassifier.analyze() itself uses —
- * kept as a standalone function (rather than reusing analyze()) so the
- * caller can reuse an already-computed StutterAnalysis instead of running
- * the model a second time.
+ * for feeding into ConversationManager.historyToGeminiContents(). Live coaching
+ * only includes core stutter types — Interjection stays in the SSI-4 report but
+ * does not tag Gemini or end Endless.
  */
 export function stutterAnalysisToMetadata(
   analysis: StutterAnalysis,
   targetPhoneme?: string,
 ): SpeechAnalysisMetadata {
   const detected = analysis.events.filter(
-    (e) => e.detected && e.label !== "Fluent",
+    (e) => e.detected && isLiveStutterLabel(e.label),
   );
   return {
     targetPhoneme,

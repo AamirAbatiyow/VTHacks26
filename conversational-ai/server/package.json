@@ -12,6 +12,7 @@
     "test:analytics": "node --import tsx --test src/analytics/*.test.ts",
     "test:tips": "node --import tsx --test src/conversation/conversationTips.test.ts",
     "sfx:generate": "tsx scripts/generateSfx.ts",
+    "greeting:generate": "tsx scripts/generateGreeting.ts",
     "db:migrate": "tsx src/analytics/cli.ts migrate",
     "analytics:report": "tsx src/analytics/cli.ts report"
   },

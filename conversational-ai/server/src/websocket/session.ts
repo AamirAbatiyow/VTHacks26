@@ -614,7 +614,7 @@ export class VoiceSession {
       if (analysis) {
         this.summary?.addAnalysis(turnId, analysis);
         const hits = analysis.events
-          .filter((e) => e.detected && e.label !== "Fluent")
+          .filter((e) => e.detected && e.label !== "Fluent" && e.label !== "Interjection")
           .map((e) => `${e.label} ${e.probability.toFixed(2)}`);
         logger.info(
           "ANALYSIS",
