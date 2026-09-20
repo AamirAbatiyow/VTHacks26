@@ -68,6 +68,11 @@
 .therapy-simulation__result-stats dd { margin: 6px 0 0; font-size: clamp(22px, 2.4vw, 32px); letter-spacing: -0.6px; }
 .therapy-simulation__result-flags { list-style: none; margin: 0 0 12px; padding: 0; }
 .therapy-simulation__result-flags li { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid #e4eee8; font-size: 12px; }
+.therapy-simulation__tips { margin: 18px 0 0; padding-top: 16px; border-top: 1px solid #e4eee8; }
+.therapy-simulation__tip-list { list-style: none; margin: 12px 0 8px; padding: 0; display: grid; gap: 10px; }
+.therapy-simulation__tip-list li { padding: 12px 14px; border: 1px solid #d5e6dc; border-radius: 14px; background: #f7fbf8; }
+.therapy-simulation__tip-list strong { display: block; font-size: 13px; color: #2f7f96; margin-bottom: 6px; }
+.therapy-simulation__tip-list span { display: block; font-size: 13px; line-height: 1.55; color: #3d5346; }
 .therapy-simulation__result-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 18px; }
 .therapy-simulation__result-actions .therapy-simulation__start { width: auto; padding-inline: 18px; }
 .therapy-simulation button.therapy-simulation__result-progress { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 16px; border: 1px solid #c2d4c9; border-radius: 11px; font-size: 12px; }

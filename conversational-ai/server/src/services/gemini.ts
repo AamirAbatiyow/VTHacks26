@@ -103,6 +103,46 @@ export class GeminiClient {
     return true;
   }
 
+  /**
+   * Embeddings for RAG. Chat model and embedding model are different
+   * endpoints; a 404 here must not kill the conversational model.
+   */
+  async embed(
+    texts: string[],
+    taskType: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY",
+  ): Promise<number[][]> {
+    if (texts.length === 0) return [];
+    const models = ["gemini-embedding-001", "text-embedding-004"];
+    let lastError: unknown;
+    const configs = [
+      { taskType, outputDimensionality: 768 },
+      { taskType },
+      undefined,
+    ] as const;
+    for (const model of models) {
+      for (const extra of configs) {
+        try {
+          const response = await this.ai.models.embedContent({
+            model,
+            contents: texts,
+            ...(extra ? { config: extra } : {}),
+          });
+          const vectors = (response.embeddings ?? [])
+            .map((item) => item.values ?? [])
+            .filter((values) => values.length > 0);
+          if (vectors.length !== texts.length) {
+            throw new Error(`Embedding count ${vectors.length} != ${texts.length}`);
+          }
+          return vectors;
+        } catch (err) {
+          lastError = err;
+        }
+      }
+      logger.warn("GEMINI", `embed ${model} failed`, String(lastError));
+    }
+    throw lastError instanceof Error ? lastError : new Error("Embedding request failed.");
+  }
+
   async generateText(params: GeminiGenerateParams): Promise<string> {
     const run = () => this.ai.models.generateContent({
       model: this.model,

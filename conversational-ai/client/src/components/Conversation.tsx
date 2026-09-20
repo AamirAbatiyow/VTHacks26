@@ -37,6 +37,19 @@ interface ExerciseRecommendation {
   options: ExerciseOption[];
 }
 
+interface ConversationTip {
+  title: string;
+  text: string;
+  technique: string;
+}
+
+interface ConversationTipsResult {
+  review: string;
+  tips: ConversationTip[];
+  attribution: string;
+  source: "rag" | "heuristic";
+}
+
 function parseAge(value: string): number | undefined {
   const age = Number(value);
   if (!Number.isFinite(age) || age < 2 || age > 120) return undefined;
@@ -79,6 +92,8 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
   const [previewId, setPreviewId] = useState(0);
   const [hasPreview, setHasPreview] = useState(false);
   const [praises, setPraises] = useState<{ id: number; text: string }[]>([]);
+  const [tips, setTips] = useState<ConversationTipsResult | null>(null);
+  const [tipsStatus, setTipsStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const paceRef = useRef<HTMLDivElement>(null);
   const paceButton = useRef<HTMLButtonElement>(null);
   const startButton = useRef<HTMLButtonElement>(null);
@@ -118,6 +133,43 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
     }, 1800);
     return () => window.clearTimeout(timer);
   }, [session.praiseCue, session.praiseCueId]);
+
+  useEffect(() => {
+    if (!completed || busy || completed.mode !== "conversation") {
+      if (!completed) {
+        setTips(null);
+        setTipsStatus("idle");
+      }
+      return;
+    }
+    const sessionKey = completed.id;
+    let cancelled = false;
+    setTipsStatus("loading");
+    setTips(null);
+    void fetch("/conversation-tips", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        childName: initialConfig?.childName,
+        userRole: initialConfig?.userRole,
+        age: parseAge(age),
+        interests: initialConfig?.interests,
+        practiceGoals: initialConfig?.practiceGoals,
+        needsDescription: struggle.trim() || initialConfig?.needsDescription,
+        analysis: completed.analysis,
+      }),
+    }).then(async (response) => {
+      if (!response.ok) throw new Error("Could not load tips.");
+      const data = await response.json() as ConversationTipsResult;
+      if (!Array.isArray(data.tips) || data.tips.length < 1) throw new Error("No tips returned.");
+      if (cancelled || completed.id !== sessionKey) return;
+      setTips(data);
+      setTipsStatus("ready");
+    }).catch(() => {
+      if (!cancelled) setTipsStatus("error");
+    });
+    return () => { cancelled = true; };
+  }, [completed, busy, age, struggle, initialConfig]);
 
   useEffect(() => {
     if (endsAt == null) return;
@@ -173,6 +225,8 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
     if (!canStart) return;
     setCompleted(null);
     setPraises([]);
+    setTips(null);
+    setTipsStatus("idle");
     void session.startConversation({
       ...initialConfig,
       conversationMode: mode,
@@ -306,6 +360,25 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
                   ) : (
                     <p className="therapy-simulation__rec-note">No audio-analysis results for this session yet. Unanalyzed turns aren’t counted as fluent.</p>
                   )}
+                  <section className="therapy-simulation__tips" aria-labelledby="conversation-tips-title">
+                    <p className="therapy-simulation__eyebrow" id="conversation-tips-title">Tips for this stretch</p>
+                    {tipsStatus === "loading" && <p className="therapy-simulation__rec-note">Matching what showed up today with SLP Stephen’s techniques…</p>}
+                    {tipsStatus === "error" && <p className="therapy-simulation__rec-note">We couldn’t load tailored tips just now. The pattern counts above are still yours.</p>}
+                    {tips && (
+                      <>
+                        <p className="therapy-simulation__review">{tips.review}</p>
+                        <ol className="therapy-simulation__tip-list">
+                          {tips.tips.map((tip) => (
+                            <li key={tip.title}>
+                              <strong>{tip.title}</strong>
+                              <span>{tip.text}</span>
+                            </li>
+                          ))}
+                        </ol>
+                        <p className="therapy-simulation__rec-note">{tips.attribution}</p>
+                      </>
+                    )}
+                  </section>
                 </>
               )}
               <div className="therapy-simulation__result-actions">

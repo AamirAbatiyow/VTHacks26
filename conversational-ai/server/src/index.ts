@@ -17,6 +17,8 @@ import { LocalAnalyticsDatabase, localDatabasePath } from "./analytics/local.js"
 import { parseSessionConfig } from "./websocket/sessionConfig.js";
 import { recommendExercises } from "./conversation/recommendExercises.js";
 import { generateFrequencyNarrative, type FrequencyNarrativeInput } from "./conversation/reportNarrative.js";
+import { TechniqueRagIndex } from "./conversation/techniqueRag.js";
+import { recommendConversationTips, type ConversationTipsInput } from "./conversation/conversationTips.js";
 
 async function main(): Promise<void> {
   let config;
@@ -40,6 +42,10 @@ async function main(): Promise<void> {
     model,
     config.geminiModelPreference,
   );
+  const techniqueRag = new TechniqueRagIndex(gemini);
+  void techniqueRag.warmup()
+    .then(() => logger.info("RAG", "SLP Stephen embeddings ready"))
+    .catch((err) => logger.warn("RAG", "embedding warmup failed", String(err)));
 
   // One StutterClassifier per registered model, shared by every connection.
   // Each lazily loads its own ONNX file (and, by filename convention, an
@@ -77,6 +83,23 @@ async function main(): Promise<void> {
       res.json(recommendation);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not recommend exercises.";
+      res.status(400).json({ error: message });
+    }
+  });
+  app.post("/conversation-tips", async (req, res) => {
+    try {
+      const body = req.body as Record<string, unknown> | undefined;
+      const profile = parseSessionConfig({ ...(body ?? {}), conversationMode: "conversation" });
+      const analysis = body?.analysis;
+      const result = await recommendConversationTips(gemini, techniqueRag, {
+        profile,
+        analysis: analysis && typeof analysis === "object" && !Array.isArray(analysis)
+          ? analysis as ConversationTipsInput["analysis"]
+          : undefined,
+      });
+      res.json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not recommend tips.";
       res.status(400).json({ error: message });
     }
   });
