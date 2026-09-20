@@ -185,7 +185,11 @@
 .therapy-simulation__error { padding: 13px 17px; border: 1px solid #dfc6b5; border-radius: 12px; background: #fff6eb; color: #845c42; font-size: 12px; }
 .therapy-simulation__camera { position: absolute; z-index: 3; right: 24px; bottom: 76px; width: 160px; overflow: hidden; border: 3px solid #ffffffa1; border-radius: 14px; box-shadow: 0 10px 25px #34534715; background: #426b5b; }
 .therapy-simulation__camera video { display: block; width: 100%; aspect-ratio: 4/3; object-fit: cover; transform: scaleX(-1); }
-.therapy-simulation__camera > span { display: block; padding: 5px; color: white; text-align: center; font-size: 9px; }
+.therapy-simulation__camera-drag { cursor: grab; touch-action: none; user-select: none; }
+.therapy-simulation__camera[data-dragging="true"] .therapy-simulation__camera-drag { cursor: grabbing; }
+.therapy-simulation__camera-drag:focus-visible { outline: 2px solid white; outline-offset: -3px; }
+.therapy-simulation__camera-drag video { pointer-events: none; }
+.therapy-simulation__camera-drag > span { display: block; padding: 5px; color: white; text-align: center; font-size: 9px; }
 .therapy-simulation__camera > button { position: absolute; right: 5px; top: 5px; width: 24px; height: 24px; padding: 0; border-radius: 50%; background: #f7faf1d9; }
 .therapy-simulation [data-guide="true"] { outline: 2px solid #6f9d79; outline-offset: 7px; border-radius: 10px; }
 .therapy-simulation[data-sidebar="closed"] .therapy-simulation__layout { grid-template-columns: 66px minmax(0, 1fr); }

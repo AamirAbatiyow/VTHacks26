@@ -8,6 +8,7 @@ import { VoiceCaptions } from "./VoiceCaptions";
 import { SimulationGuide } from "./SimulationGuide";
 import { SimulationIcon } from "./SimulationIcon";
 import { useCameraPreview } from "../hooks/useCameraPreview";
+import { CameraPreview } from "./CameraPreview";
 import { formatDuration, formatPracticeMode } from "../progress/practiceHistory";
 import type { PracticeSession } from "../progress/practiceHistory";
 import { ANALYSIS_LABELS, ANALYSIS_NAMES } from "@shared/sessionSummary";
@@ -425,7 +426,7 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
                 ))}
               </div>
             )}
-            {camera.stream && <div className="therapy-simulation__camera"><video ref={camera.videoRef} autoPlay muted playsInline aria-label="Your camera preview" /><span>Only visible to you</span><button aria-label="Close camera preview" onClick={camera.stop}>×</button></div>}
+            {camera.stream && <CameraPreview videoRef={camera.videoRef} onClose={camera.stop} />}
             <div className="therapy-simulation__stage-footer"><span className="therapy-simulation__stage-note"><SimulationIcon name="sound" />{previewing ? "Visual preview · no audio" : wrappingUp ? (mode === "endless" ? "Leaving it on a kind beat." : "That’s all the time we have for today.") : session.assistantSpeaking ? "Follow the words. Find your rhythm." : "A quiet space for your voice."}</span>{session.assistantSpeaking && !wrappingUp ? <button className="therapy-simulation__preview" onClick={session.manualInterrupt}><SimulationIcon name="stop" />Pause reply</button> : !busy && <button className="therapy-simulation__preview" onClick={() => { if (previewing) setPreviewing(false); else { setHasPreview(true); setPreviewId(id => id + 1); setPreviewing(true); } }}><SimulationIcon name={previewing ? "stop" : "play"} />{previewing ? "Stop preview" : "Preview animation"}</button>}</div>
           </section>
           <section className="therapy-simulation__captions" aria-labelledby="captions-label"><div className="therapy-simulation__caption-heading"><p id="captions-label" className="therapy-simulation__eyebrow"><SimulationIcon name="captions" />{hasPreview ? "Preview subtitles" : "Live subtitles"}</p><span>{paceLabels[pace]} pace</span></div><VoiceCaptions text={captionText} utteranceId={captionId} speaking={speaking} complete={hasPreview || Boolean(latestAssistant?.id === captionId)} interrupted={Boolean(latestAssistant?.id === captionId && latestAssistant.interrupted)} pace={pace} placeholder="Your companion’s words will appear here." /></section>
