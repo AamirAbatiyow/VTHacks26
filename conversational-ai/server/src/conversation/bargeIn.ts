@@ -1,29 +1,19 @@
-const FILLERS = new Set([
-  "um", "uh", "uhm", "hmm", "hm", "ah", "oh", "er", "erm",
-  "mhm", "mm", "mmm", "yeah", "yep", "yup", "ok", "okay",
-  "so", "like", "and", "the", "a", "uhhuh",
-]);
-
 const BARGE_WORDS = new Set(["wait", "stop", "hold", "hey", "hang"]);
 
 function normalize(text: string): string {
   return text.toLowerCase().replace(/[^a-z'\s]/g, " ").replace(/\s+/g, " ").trim();
 }
 
-function contentWords(text: string): string[] {
-  return normalize(text)
-    .split(" ")
-    .filter((word) => word.length > 1 && !FILLERS.has(word));
-}
-
 /**
  * True when an interim transcript looks like the speaker is taking the floor,
- * not a Scribe hallucination, filler, or the assistant leaking back in.
+ * not a click hallucination or the assistant leaking back in.
+ * Words such as "uh" stay in: they can be a stutter, not something to drop.
  */
 export function looksLikeBargeIn(interim: string, assistantText = ""): boolean {
-  const words = contentWords(interim);
-  if (words.length === 0) return false;
+  const spoken = normalize(interim);
+  if (!spoken) return false;
   if (looksLikeAssistantEcho(interim, assistantText)) return false;
+  const words = spoken.split(" ").filter(Boolean);
   if (words.some((word) => BARGE_WORDS.has(word))) return true;
   if (words.length >= 2) return true;
   return (words[0]?.length ?? 0) >= 5;

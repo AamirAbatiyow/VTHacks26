@@ -22,6 +22,13 @@ export const CONVERSATION_MODES = [
 
 export type ConversationMode = (typeof CONVERSATION_MODES)[number];
 
+export const SESSION_MINUTE_OPTIONS = [2, 5, 10, 15] as const;
+export type SessionMinutes = (typeof SESSION_MINUTE_OPTIONS)[number];
+
+export function isSessionMinutes(value: unknown): value is SessionMinutes {
+  return typeof value === "number" && SESSION_MINUTE_OPTIONS.some((option) => option === value);
+}
+
 /** Session configuration sent when starting a conversation. */
 export interface SessionConfig {
   childName?: string;
@@ -39,6 +46,8 @@ export interface SessionConfig {
   practiceGoals?: string[];
   /** Optional context supplied during onboarding, up to 1,000 characters. */
   needsDescription?: string;
+  /** Conversation length in minutes. Required to start Conversation mode. */
+  sessionMinutes?: SessionMinutes;
 }
 
 /** Optional future speech-analysis metadata attached to a user turn. */
@@ -110,6 +119,10 @@ export interface SessionEndedEvent {
   type: "session_ended";
   sessionId: string;
   summary?: SessionSummary;
+}
+
+export interface SessionWrappingUpEvent {
+  type: "session_wrapping_up";
 }
 
 export interface ProviderStatusEvent {
@@ -219,6 +232,7 @@ export interface ServerPongEvent {
 
 export type ServerJsonEvent =
   | SessionStartedEvent
+  | SessionWrappingUpEvent
   | SessionEndedEvent
   | ProviderStatusEvent
   | UserSpeechStartedEvent

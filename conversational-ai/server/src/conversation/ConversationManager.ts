@@ -199,6 +199,51 @@ export class ConversationManager {
     this.playbackEndsAtMs = Math.max(this.playbackEndsAtMs, now) + durationMs;
   }
 
+  remainingPlaybackMs(): number {
+    return Math.max(0, this.playbackEndsAtMs - performance.now());
+  }
+
+  /** Speak a fixed closing line without asking Gemini. */
+  async speakScripted(text: string): Promise<void> {
+    const spoken = sanitizeForSpeech(text).trim();
+    if (!spoken) return;
+    const generationId = randomUUID();
+    this.activeGenerationId = generationId;
+    this.interrupted = false;
+    this.assistantBuffer = spoken;
+    this.speechStarted = false;
+
+    this.callbacks.onTextDelta(generationId, spoken);
+    this.elevenLabs.onAudio(generationId, (pcm) => {
+      if (!this.isGenerationValid(generationId)) return;
+      if (!this.speechStarted) {
+        this.speechStarted = true;
+        this.callbacks.onSpeechStarted(generationId);
+      }
+      this.callbacks.onTtsAudio(generationId, pcm);
+    });
+
+    try {
+      await this.elevenLabs.ensureConnected();
+      await this.elevenLabs.beginContext(generationId);
+      await this.elevenLabs.sendText(generationId, spoken);
+      await this.elevenLabs.flushContext(generationId);
+      await this.elevenLabs.closeContext(generationId);
+      await this.elevenLabs.waitForContextEnd(generationId);
+      if (!this.isGenerationValid(generationId)) return;
+      this.history.push({ role: "model", text: spoken, interrupted: false, generationId });
+      this.callbacks.onTextFinal(generationId, spoken, false);
+      this.callbacks.onSpeechEnded(generationId);
+      const remaining = this.remainingPlaybackMs();
+      if (remaining > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remaining + 700));
+      }
+    } finally {
+      if (this.activeGenerationId === generationId) this.activeGenerationId = null;
+      this.elevenLabs.clearAudioHandler(generationId);
+    }
+  }
+
   /** Generation the user can still hear, if any. */
   audibleGenerationId(): string | null {
     if (

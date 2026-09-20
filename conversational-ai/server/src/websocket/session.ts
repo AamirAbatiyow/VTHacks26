@@ -7,6 +7,7 @@ import {
   AUDIO_SAMPLE_RATE_IN,
   AUDIO_SAMPLE_RATE_OUT,
   BinaryMsgType,
+  isSessionMinutes,
   type ClientJsonMessage,
   type ServerJsonEvent,
   type SessionConfig,
@@ -85,6 +86,8 @@ export class VoiceSession {
   private closed = false;
   private readonly connectedAt = performance.now();
   private conversationStartedAt: number | null = null;
+  private sessionTimer: ReturnType<typeof setTimeout> | null = null;
+  private wrappingUp = false;
   private summary: SessionSummaryCollector | null = null;
   private pendingAnalyses = new Set<Promise<SpeechAnalysisMetadata | undefined>>();
   private latestTurn = 0;
@@ -273,6 +276,15 @@ export class VoiceSession {
       });
       return;
     }
+    if ((config.conversationMode ?? "conversation") === "conversation" && !isSessionMinutes(config.sessionMinutes)) {
+      this.send({
+        type: "error",
+        code: "session_config",
+        message: "Choose how long this conversation should last.",
+        recoverable: true,
+      });
+      return;
+    }
     this.sessionConfig = config;
     this.analytics?.track(this.sessionId, { type: "conversation_profile", properties: {
       name: typeof config.childName === "string" ? config.childName.trim() || null : null,
@@ -401,7 +413,7 @@ export class VoiceSession {
         this.send({ type: "transcript_interim", text });
         // Cut the assistant only when the transcript looks like a real takeover,
         // not a filler, click hallucination, or the assistant's own voice.
-        if (looksLikeBargeIn(text, this.conversation?.currentAssistantText() ?? "")) {
+        if (!this.wrappingUp && looksLikeBargeIn(text, this.conversation?.currentAssistantText() ?? "")) {
           this.interruptActiveGeneration();
         }
       },
@@ -457,10 +469,48 @@ export class VoiceSession {
       sampleRateIn: AUDIO_SAMPLE_RATE_IN,
       sampleRateOut: AUDIO_SAMPLE_RATE_OUT,
     });
+    if ((config.conversationMode ?? "conversation") === "conversation" && isSessionMinutes(config.sessionMinutes)) {
+      this.sessionTimer = setTimeout(() => {
+        void this.finishOnTime();
+      }, config.sessionMinutes * 60_000);
+    }
     logger.info("SESSION", "started");
   }
 
+  private async finishOnTime(): Promise<void> {
+    if (this.closed || this.wrappingUp) return;
+    this.wrappingUp = true;
+    if (this.sessionTimer) {
+      clearTimeout(this.sessionTimer);
+      this.sessionTimer = null;
+    }
+    this.send({ type: "session_wrapping_up" });
+    logger.info("SESSION", "time is up");
+    const current =
+      this.conversation?.getActiveGenerationId() ??
+      this.conversation?.audibleGenerationId();
+    if (current) {
+      try {
+        await this.conversation?.interrupt(current);
+        this.send({ type: "interrupted", generationId: current });
+      } catch {
+        /* closing line still goes out */
+      }
+    }
+    const name = this.sessionConfig.childName?.trim();
+    const closing = name
+      ? `${name}, that's all the time we have for today. You showed up and you practiced, and that is the work. We'll pick this up next time.`
+      : "That's all the time we have for today. You showed up and you practiced, and that is the work. We'll pick this up next time.";
+    try {
+      await this.conversation?.speakScripted(closing);
+    } catch (error) {
+      logger.warn("SESSION", "closing line failed", String(error));
+    }
+    await this.cleanup("time_up");
+  }
+
   private interruptActiveGeneration(): void {
+    if (this.wrappingUp) return;
     // Either a generation still running, or one whose audio is still playing.
     const genId =
       this.conversation?.getActiveGenerationId() ??
@@ -482,7 +532,7 @@ export class VoiceSession {
     text: string,
     lastWordEndSeconds: number | null,
   ): Promise<void> {
-    if (!this.conversation || this.closed || !text.trim()) return;
+    if (!this.conversation || this.closed || this.wrappingUp || !text.trim()) return;
     const conversation = this.conversation;
     const turnSequence = ++this.latestTurn;
 
@@ -586,6 +636,10 @@ export class VoiceSession {
   async cleanup(reason: string): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    if (this.sessionTimer) {
+      clearTimeout(this.sessionTimer);
+      this.sessionTimer = null;
+    }
     const conversationDurationMs = this.conversationStartedAt == null ? null : Math.round(performance.now() - this.conversationStartedAt);
     this.analytics?.track(this.sessionId, { type: "session_ended", properties: {
       reason, durationMs: Math.round(performance.now() - this.connectedAt),

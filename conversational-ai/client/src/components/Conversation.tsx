@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ConversationMode, SessionConfig } from "@shared/events";
+import type { ConversationMode, SessionConfig, SessionMinutes } from "@shared/events";
+import { SESSION_MINUTE_OPTIONS } from "@shared/events";
 import { useVoiceSession } from "../hooks/useVoiceSession";
 import { VocallyWordmark } from "./VocallyWordmark";
 import { TherapyTopography } from "./TherapyTopography";
@@ -7,8 +8,9 @@ import { VoiceCaptions } from "./VoiceCaptions";
 import { SimulationGuide } from "./SimulationGuide";
 import { SimulationIcon } from "./SimulationIcon";
 import { useCameraPreview } from "../hooks/useCameraPreview";
-import { formatPracticeMode } from "../progress/practiceHistory";
+import { formatDuration, formatPracticeMode } from "../progress/practiceHistory";
 import type { PracticeSession } from "../progress/practiceHistory";
+import { ANALYSIS_LABELS, ANALYSIS_NAMES } from "@shared/sessionSummary";
 import "./Conversation.css";
 
 type CaptionPace = "slow" | "natural" | "quick";
@@ -40,13 +42,25 @@ function parseAge(value: string): number | undefined {
   return Math.round(age);
 }
 
+function formatClock(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
 export function Conversation({ initialConfig, onBack, onSessionComplete }: { initialConfig?: SessionConfig | null; onBack?: () => void; onSessionComplete?: (entry: PracticeSession) => void }) {
-  const session = useVoiceSession(onSessionComplete);
+  const [completed, setCompleted] = useState<PracticeSession | null>(null);
+  const session = useVoiceSession((entry) => {
+    setCompleted(entry);
+    onSessionComplete?.(entry);
+  });
   const camera = useCameraPreview();
   const [mode, setMode] = useState<ConversationMode>(initialConfig?.conversationMode === "exercises" ? "exercises" : "conversation");
   const [age, setAge] = useState(initialConfig?.age ? String(initialConfig.age) : "");
   const [struggle, setStruggle] = useState(initialConfig?.needsDescription ?? "");
   const [technique, setTechnique] = useState(initialConfig?.exerciseTechnique ?? "");
+  const [sessionMinutes, setSessionMinutes] = useState<SessionMinutes | null>(initialConfig?.sessionMinutes ?? null);
+  const [endsAt, setEndsAt] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const [recommendation, setRecommendation] = useState<ExerciseRecommendation | null>(null);
   const [recStatus, setRecStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [pace, setPace] = useState<CaptionPace>("natural");
@@ -69,14 +83,30 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
   const captionText = hasPreview ? previewText : session.assistantStreaming || latestAssistant?.text || "";
   const captionId = hasPreview ? `preview-${previewId}` : session.assistantUtteranceId || latestAssistant?.id || "idle";
   const speaking = session.assistantSpeaking || previewing;
-  const canStart = mode === "conversation" || Boolean(technique);
-  const status = previewing ? "Animation preview" : session.isStarting ? "Getting ready…" : session.assistantSpeaking ? "Vocally is speaking" : session.sessionActive ? session.micMuted ? "Microphone is muted" : session.activeGenerationId ? "A moment to think…" : "Listening to you" : "Ready when you are";
+  const canStart = mode === "exercises" ? Boolean(technique) : Boolean(sessionMinutes);
+  const remainingMs = endsAt == null ? null : endsAt - now;
+  const wrappingUp = Boolean(busy && remainingMs != null && remainingMs <= 0);
+  const status = previewing ? "Animation preview" : session.isStarting ? "Getting ready…" : wrappingUp ? "That’s all for today…" : session.assistantSpeaking ? "Vocally is speaking" : session.sessionActive ? session.micMuted ? "Microphone is muted" : session.activeGenerationId ? "A moment to think…" : remainingMs != null ? `${formatClock(remainingMs)} left` : "Listening to you" : "Ready when you are";
 
   useEffect(() => {
     if (!previewing) return;
     const timer = window.setTimeout(() => setPreviewing(false), 16_000);
     return () => window.clearTimeout(timer);
   }, [previewing, previewId]);
+
+  useEffect(() => {
+    if (!session.sessionActive || !sessionMinutes) {
+      setEndsAt(null);
+      return;
+    }
+    setEndsAt(Date.now() + sessionMinutes * 60_000);
+  }, [session.sessionActive, sessionMinutes]);
+
+  useEffect(() => {
+    if (endsAt == null) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [endsAt]);
 
   useEffect(() => {
     if (!paceOpen) return;
@@ -124,12 +154,14 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
     setHasPreview(false);
     if (busy) { camera.stop(); await session.endConversation(); return; }
     if (!canStart) return;
+    setCompleted(null);
     void session.startConversation({
       ...initialConfig,
       conversationMode: mode,
       age: parseAge(age),
       needsDescription: struggle.trim() || undefined,
       exerciseTechnique: mode === "exercises" ? technique : undefined,
+      sessionMinutes: mode === "conversation" ? sessionMinutes ?? undefined : undefined,
     });
   }
   async function returnToDashboard() { camera.stop(); await session.endConversation(); onBack?.(); }
@@ -149,6 +181,19 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
               <div className="therapy-simulation__mode-list" role="group" aria-labelledby="conversation-mode-label">{modes.map(item => <button type="button" key={item.id} className="therapy-simulation__mode" aria-pressed={mode === item.id} onClick={() => setMode(item.id)} disabled={busy}><span className="therapy-simulation__mode-icon" aria-hidden="true">{item.symbol}</span><span>{item.name}</span><span className="therapy-simulation__mode-dot" aria-hidden="true" /></button>)}</div>
               <p className="therapy-simulation__mode-description">{busy ? "End your session to choose another mode." : selectedMode.detail}</p>
             </section>
+            {mode === "conversation" && (
+              <section className="therapy-simulation__duration" aria-labelledby="conversation-duration-label">
+                <p className="therapy-simulation__eyebrow" id="conversation-duration-label">How long today</p>
+                <div className="therapy-simulation__duration-list" role="group" aria-labelledby="conversation-duration-label">
+                  {SESSION_MINUTE_OPTIONS.map(minutes => (
+                    <button type="button" key={minutes} className="therapy-simulation__duration-option" aria-pressed={sessionMinutes === minutes} disabled={busy} onClick={() => setSessionMinutes(minutes)}>
+                      {minutes} min
+                    </button>
+                  ))}
+                </div>
+                <p className="therapy-simulation__rec-note">{busy && remainingMs != null ? `${formatClock(remainingMs)} remaining.` : "Pick a length before you start. When time is up, we’ll close gently."}</p>
+              </section>
+            )}
             {mode === "exercises" && (
               <section className="therapy-simulation__exercises" aria-labelledby="exercise-review-label">
                 <p className="therapy-simulation__eyebrow" id="exercise-review-label">What you’re working on</p>
@@ -179,10 +224,10 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
               </section>
             )}
             <div className="therapy-simulation__sidebar-bottom">
-              {mode === "conversation" && <div className="therapy-simulation__invitation"><span aria-hidden="true">✳</span><p>No perfect words needed.<br />Just begin where you are.</p></div>}
+              {mode === "conversation" && !sessionMinutes && <div className="therapy-simulation__invitation"><span aria-hidden="true">✳</span><p>No perfect words needed.<br />Just begin where you are.</p></div>}
               <div className="therapy-simulation__start-area" data-guide={tourOpen && tourStep === 2}>
                 <button ref={startButton} type="button" className="therapy-simulation__start" onClick={() => void startOrEnd()} disabled={session.isEnding || (!busy && !canStart)}><SimulationIcon name={busy ? "stop" : "play"} />{session.isEnding ? "Saving session…" : session.isStarting ? "Cancel" : busy ? "End session" : "Start session"}<span aria-hidden="true">{busy ? "" : "↗"}</span></button>
-                <p className="therapy-simulation__mic-note">{busy ? "Take all the time you need." : mode === "exercises" && !technique ? "Pick one of the three exercises to begin." : "Your microphone connects when you start."}</p>
+                <p className="therapy-simulation__mic-note">{busy ? wrappingUp ? "That’s all the time we have for today." : "Take all the time you need." : mode === "exercises" && !technique ? "Pick one of the three exercises to begin." : mode === "conversation" && !sessionMinutes ? "Choose a conversation length to begin." : "Your microphone connects when you start."}</p>
               </div>
               <div className="therapy-simulation__tools" data-guide={tourOpen && tourStep === 1}>
                 <div className="therapy-simulation__pace-wrap" ref={paceRef} onKeyDown={event => { if (event.key === "Escape") { setPaceOpen(false); paceButton.current?.focus(); } }}>
@@ -198,6 +243,35 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
         </aside>
         <div className="therapy-simulation__main">
           {(session.error || camera.error) && <div className="therapy-simulation__error" role="alert">{session.error || camera.error}</div>}
+          {completed && !busy && (
+            <section className="therapy-simulation__results" aria-labelledby="session-results-title">
+              <p className="therapy-simulation__eyebrow">This session</p>
+              <h2 id="session-results-title">That’s all for <em>today.</em></h2>
+              <dl className="therapy-simulation__result-stats">
+                <div><dt>Time together</dt><dd>{formatDuration(completed.seconds)}</dd></div>
+                <div><dt>Speaking turns</dt><dd>{completed.turns}</dd></div>
+                <div><dt>Turns with flags</dt><dd>{completed.analysis?.flaggedTurns ?? 0}</dd></div>
+              </dl>
+              {completed.analysis && completed.analysis.analyzedTurns > 0 ? (
+                <>
+                  <p className="therapy-simulation__rec-note">{completed.analysis.analyzedTurns} speaking {completed.analysis.analyzedTurns === 1 ? "turn" : "turns"} analyzed.</p>
+                  <ul className="therapy-simulation__result-flags">
+                    {ANALYSIS_LABELS.filter(label => (completed.analysis?.categories[label] ?? 0) > 0).map(label => (
+                      <li key={label}><span>{ANALYSIS_NAMES[label]}</span><strong>{completed.analysis?.categories[label]}</strong></li>
+                    ))}
+                  </ul>
+                  <p className="therapy-simulation__rec-note">Audio model observations, not a diagnosis.</p>
+                </>
+              ) : (
+                <p className="therapy-simulation__rec-note">No audio-analysis results for this session yet. Unanalyzed turns aren’t counted as fluent.</p>
+              )}
+              <div className="therapy-simulation__result-actions">
+                <button type="button" className="therapy-simulation__start" onClick={() => setCompleted(null)}>Practice again</button>
+                {onBack && <button type="button" className="therapy-simulation__result-progress" onClick={() => void returnToDashboard()}>Your progress<span aria-hidden="true">↗</span></button>}
+              </div>
+            </section>
+          )}
+          {!(completed && !busy) && <>
           <section className="therapy-simulation__stage" aria-labelledby="practice-title" data-speaking={speaking}>
             <div className="therapy-simulation__stage-heading"><div><p className="therapy-simulation__eyebrow">One conversation at a time</p><h2 id="practice-title">Find your <em>flow.</em></h2></div><span className="therapy-simulation__status" role="status"><i aria-hidden="true" />{status}</span></div>
             <div className="therapy-simulation__contours"><TherapyTopography speaking={session.assistantSpeaking} previewing={previewing} /></div>
@@ -208,7 +282,8 @@ export function Conversation({ initialConfig, onBack, onSessionComplete }: { ini
             <div className="therapy-simulation__stage-footer"><span className="therapy-simulation__stage-note"><SimulationIcon name="sound" />{previewing ? "Visual preview · no audio" : session.assistantSpeaking ? "Follow the words. Find your rhythm." : "A quiet space for your voice."}</span>{session.assistantSpeaking ? <button className="therapy-simulation__preview" onClick={session.manualInterrupt}><SimulationIcon name="stop" />Pause reply</button> : !busy && <button className="therapy-simulation__preview" onClick={() => { if (previewing) setPreviewing(false); else { setHasPreview(true); setPreviewId(id => id + 1); setPreviewing(true); } }}><SimulationIcon name={previewing ? "stop" : "play"} />{previewing ? "Stop preview" : "Preview animation"}</button>}</div>
           </section>
           <section className="therapy-simulation__captions" aria-labelledby="captions-label"><div className="therapy-simulation__caption-heading"><p id="captions-label" className="therapy-simulation__eyebrow"><SimulationIcon name="captions" />{hasPreview ? "Preview subtitles" : "Live subtitles"}</p><span>{paceLabels[pace]} pace</span></div><VoiceCaptions text={captionText} utteranceId={captionId} speaking={speaking} complete={hasPreview || Boolean(latestAssistant?.id === captionId)} interrupted={Boolean(latestAssistant?.id === captionId && latestAssistant.interrupted)} pace={pace} placeholder="Your companion’s words will appear here." /></section>
-          <footer className="therapy-simulation__footer"><span>{session.interimText ? `You: ${session.interimText}` : "A little space to pause, practice, and grow."}</span><span><i aria-hidden="true" />{selectedExercise ? selectedExercise.name : formatPracticeMode(mode)}</span></footer>
+          <footer className="therapy-simulation__footer"><span>{session.interimText ? `You: ${session.interimText}` : "A little space to pause, practice, and grow."}</span><span><i aria-hidden="true" />{selectedExercise ? selectedExercise.name : remainingMs != null ? formatClock(remainingMs) : formatPracticeMode(mode)}</span></footer>
+          </>}
         </div>
       </div>
       <SimulationGuide open={tourOpen} step={tourStep} onStepChange={setTourStep} onDismiss={dismissTour} />

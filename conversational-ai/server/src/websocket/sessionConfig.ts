@@ -1,8 +1,10 @@
 import {
   CONVERSATION_MODES,
   USER_ROLES,
+  isSessionMinutes,
   type ConversationMode,
   type SessionConfig,
+  type SessionMinutes,
   type UserRole,
 } from "../../../shared/events.js";
 import { isKnownTechniqueId } from "../conversation/techniques.js";
@@ -68,6 +70,10 @@ export function parseSessionConfig(value: unknown): SessionConfig {
     throw new Error("Pick one of the three recommended exercises before starting.");
   }
 
+  if (config.sessionMinutes !== undefined && !isSessionMinutes(config.sessionMinutes)) {
+    throw new Error("Choose 2, 5, 10, or 15 minutes.");
+  }
+
   return {
     childName: optionalText("childName"),
     userRole: userRole as UserRole | undefined,
@@ -79,5 +85,6 @@ export function parseSessionConfig(value: unknown): SessionConfig {
     practiceGoals: optionalList("practiceGoals", 6, 100),
     needsDescription: optionalText("needsDescription", 1000),
     stutterModel: optionalText("stutterModel", 80),
+    sessionMinutes: config.sessionMinutes as SessionMinutes | undefined,
   };
 }

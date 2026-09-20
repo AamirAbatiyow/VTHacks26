@@ -112,6 +112,7 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
   const cancelConnectRef = useRef<(() => void) | null>(null);
   const sessionReadyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const interruptedGenerationsRef = useRef(new Set<string>());
+  const wrappingUpRef = useRef(false);
 
   const sendJson = useCallback((msg: ClientJsonMessage) => {
     const ws = wsRef.current;
@@ -122,7 +123,7 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
 
   const interruptNow = useCallback(
     (generationId: string | null) => {
-      if (!generationId) return;
+      if (!generationId || wrappingUpRef.current) return;
       interruptedGenerationsRef.current.add(generationId);
       console.info("[USER] interruption detected");
       playerRef.current?.clear();
@@ -240,24 +241,43 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
             error: null,
           }));
           break;
-        case "session_ended":
+        case "session_wrapping_up":
+          wrappingUpRef.current = true;
+          vadRef.current?.disarm();
+          break;
+        case "session_ended": {
           if (ev.summary && isPracticeSession(ev.summary) && ev.summary.id === practiceRef.current?.collector.id) {
             practiceRef.current = null;
             completionRef.current?.(ev.summary);
           }
-          closeConnection();
-          setState((s) => ({
-            ...s,
-            connected: false,
-            sessionActive: false,
-            isStarting: false,
-            assistantSpeaking: false,
-            activeGenerationId: null,
-            assistantStreaming: "",
-            interimText: "",
-            stutterCue: null,
-          }));
+          const finish = () => {
+            closeConnection();
+            setState((s) => ({
+              ...s,
+              connected: false,
+              sessionActive: false,
+              isStarting: false,
+              assistantSpeaking: false,
+              activeGenerationId: null,
+              assistantStreaming: "",
+              interimText: "",
+              stutterCue: null,
+            }));
+          };
+          if (playerRef.current?.isPlaying) {
+            let settled = false;
+            const once = () => {
+              if (settled) return;
+              settled = true;
+              finish();
+            };
+            playerRef.current.setOnDrained(once);
+            window.setTimeout(once, 8_000);
+          } else {
+            finish();
+          }
           break;
+        }
         case "transcript_interim":
           setState((s) => ({ ...s, interimText: ev.text }));
           break;
@@ -405,6 +425,7 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
       const version = ++sessionVersionRef.current;
       const isCurrent = () => mountedRef.current && version === sessionVersionRef.current;
       startingRef.current = true;
+      wrappingUpRef.current = false;
       practiceModeRef.current = config.conversationMode ?? "conversation";
       interruptedGenerationsRef.current.clear();
       setState((s) => ({
