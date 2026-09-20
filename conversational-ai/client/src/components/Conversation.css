@@ -119,10 +119,18 @@
   letter-spacing: -1.6px;
   color: #2f7f96;
   text-shadow: 0 8px 28px #dceef0aa;
-  animation: therapy-cue-in 420ms ease, therapy-cue-out 900ms ease 6.2s forwards;
+  animation: therapy-cue-pulse 2s ease-in-out, therapy-cue-out 550ms ease 2s forwards;
 }
-@keyframes therapy-cue-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-@keyframes therapy-cue-out { to { opacity: 0; } }
+@keyframes therapy-cue-pulse {
+  0% { opacity: 0; transform: scale(0.96); }
+  14% { opacity: 1; transform: scale(1.05); }
+  32% { transform: scale(0.99); }
+  50% { transform: scale(1.04); }
+  68% { transform: scale(1); }
+  84% { transform: scale(1.03); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes therapy-cue-out { to { opacity: 0; transform: scale(0.98); } }
 .therapy-simulation__stage-footer { position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: auto; padding: 23px 28px; }
 .therapy-simulation__stage-note { display: flex; align-items: center; gap: 9px; font-size: 10px; color: #537768; }
 .therapy-simulation__stage-note svg { width: 16px; }
@@ -253,5 +261,5 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .therapy-simulation *, .therapy-simulation *::before, .therapy-simulation *::after { transition: none !important; }
-  .therapy-simulation__stutter-cue { animation: none; }
+  .therapy-simulation__stutter-cue { animation: therapy-cue-out 550ms ease 2s forwards; }
 }

@@ -32,7 +32,7 @@ export interface VoiceSessionState {
   assistantUtteranceId: string | null;
   activeGenerationId: string | null;
   error: string | null;
-  /** Set when the classifier flags a non-fluent event on the latest turn. */
+  /** On-screen coaching line after a non-fluent event. */
   stutterCue: string | null;
   stutterCueId: number;
 }
@@ -52,6 +52,24 @@ function wsUrl(): string {
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
   // Vite proxies /ws → backend in dev
   return `${proto}//${window.location.host}/ws`;
+}
+
+const STUTTER_CUES = [
+  "Take your time.",
+  "There is no hurry.",
+  "The words can wait.",
+  "You have the floor.",
+  "Ease into the next sound.",
+  "Stay with the thought.",
+  "A pause is allowed.",
+  "Finish when you're ready.",
+  "Soft start is enough.",
+  "We can go slowly.",
+];
+
+function nextStutterCue(previous: string | null): string {
+  const pool = STUTTER_CUES.filter((line) => line !== previous);
+  return pool[Math.floor(Math.random() * pool.length)] ?? STUTTER_CUES[0]!;
 }
 
 function encodeMicFrame(pcm: ArrayBuffer): ArrayBuffer {
@@ -296,7 +314,7 @@ export function useVoiceSession(onSessionComplete?: (entry: PracticeSession) => 
           practiceRef.current?.collector.addAnalysis(ev.turnId, ev.analysis);
           const flagged = ev.analysis.events.some((event) => event.detected && event.label !== "Fluent");
           setState((s) => flagged
-            ? { ...s, stutterCue: "Take your time.", stutterCueId: s.stutterCueId + 1 }
+            ? { ...s, stutterCue: nextStutterCue(s.stutterCue), stutterCueId: s.stutterCueId + 1 }
             : s);
           break;
         }
