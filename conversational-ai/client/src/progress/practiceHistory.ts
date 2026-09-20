@@ -27,7 +27,9 @@ export function isPracticeSession(s: unknown): s is PracticeSession {
   const a = value.analysis;
   const analysisOk = a === undefined || (a !== null && Number.isInteger(a.analyzedTurns) && a.analyzedTurns >= 0 && a.analyzedTurns <= value.turns &&
     Number.isInteger(a.flaggedTurns) && a.flaggedTurns >= 0 && a.flaggedTurns <= a.analyzedTurns &&
-    a.categories !== null && typeof a.categories === "object" && Object.values(a.categories).every(n => Number.isInteger(n) && n >= 0 && n <= a.analyzedTurns));
+    a.categories !== null && typeof a.categories === "object" && Object.values(a.categories).every(n => Number.isInteger(n) && n >= 0 && n <= a.analyzedTurns) &&
+    // Older cached summaries predate this field; only validate it when present.
+    (a.words === undefined || (Number.isInteger(a.words) && a.words >= 0)));
   const score = value.score;
   const scoreOk = score === undefined || (score !== null && typeof score === "object" &&
     Number.isFinite(score.total) && score.total >= 0 &&

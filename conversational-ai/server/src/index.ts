@@ -16,6 +16,7 @@ import { createAnalyticsPool, initializeAnalyticsDatabase, postgresAnalyticsData
 import { LocalAnalyticsDatabase, localDatabasePath } from "./analytics/local.js";
 import { parseSessionConfig } from "./websocket/sessionConfig.js";
 import { recommendExercises } from "./conversation/recommendExercises.js";
+import { generateFrequencyNarrative, type FrequencyNarrativeInput } from "./conversation/reportNarrative.js";
 
 async function main(): Promise<void> {
   let config;
@@ -79,6 +80,25 @@ async function main(): Promise<void> {
       res.status(400).json({ error: message });
     }
   });
+  // Narrative prose over numbers the client already computed (see
+  // client/src/progress/frequency.ts). Gemini is handed the finished
+  // numbers and told never to recompute them; on any failure this falls
+  // back to a plain templated summary, so the report never blocks on it.
+  app.post("/report-narrative", async (req, res) => {
+    const body = req.body as Partial<FrequencyNarrativeInput> | undefined;
+    if (!body?.summary || typeof body.summary !== "object") {
+      res.status(400).json({ error: "Body must include a precomputed 'summary' object." });
+      return;
+    }
+    try {
+      const result = await generateFrequencyNarrative(gemini, body as FrequencyNarrativeInput);
+      res.json(result);
+    } catch (error) {
+      logger.warn("GEMINI", "narrative generation failed", String(error));
+      res.status(500).json({ error: "Could not generate a narrative right now." });
+    }
+  });
+
   app.get("/stutter-models", (_req, res) => {
     res.json({
       models: STUTTER_MODELS.filter(m => stutterModels.has(m.id)).map(({ id, label }) => ({ id, label })),

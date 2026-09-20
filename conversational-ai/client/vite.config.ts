@@ -25,6 +25,9 @@ export default defineConfig({
       "/exercise-recommendations": {
         target: "http://localhost:3001",
       },
+      "/report-narrative": {
+        target: "http://localhost:3001",
+      },
     },
   },
 });

@@ -16,6 +16,8 @@
     "build": "npm run build -w server && npm run build -w client",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w client",
     "test:analytics": "npm run test:analytics -w server",
+    "test:progress": "TSX_TSCONFIG_PATH=client/tsconfig.json node --import tsx --test client/src/progress/*.test.ts",
+    "test:shared": "node --import tsx --test shared/*.test.ts",
     "db:migrate": "npm run db:migrate -w server --",
     "analytics:report": "npm run analytics:report -w server",
     "deploy:fly": "fly deploy .."
