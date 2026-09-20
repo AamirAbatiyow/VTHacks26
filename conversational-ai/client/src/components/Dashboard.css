@@ -94,6 +94,25 @@
 .progress-garden .speech-report-dialog p { color: #526e62; line-height: 1.6; }
 .progress-garden .speech-report-dialog .primary { border: 0; border-radius: 100px; background: #567969; color: white; padding: 0.85rem 1.25rem; }
 .progress-garden .speech-report-dialog pre { padding: 1.25rem; border: 1px solid #d0e2db; border-radius: 12px; background: white; font: 0.85rem/1.7 "IBM Plex Sans", sans-serif; white-space: pre-wrap; overflow-wrap: anywhere; }
+.progress-garden .report-frequency { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.25rem 0; }
+.progress-garden .report-frequency__panel { padding: 1.25rem; border: 1px solid #d0e2db; border-radius: 12px; background: white; }
+.progress-garden .report-frequency__panel .eyebrow { font-size: 0.7rem; letter-spacing: 0.06em; color: #7a9389; }
+.progress-garden .report-frequency__panel h3 { display: flex; align-items: baseline; gap: 0.4rem; margin: 0.5rem 0; font: 400 1.6rem Georgia, serif; color: #355a50; }
+.progress-garden .report-frequency__panel h3 small { font-size: 0.7rem; color: #7a9389; font-family: "IBM Plex Sans", sans-serif; }
+.progress-garden .frequency-chart { width: 100%; height: auto; margin: 0.5rem 0; }
+.progress-garden .category-bars { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.5rem; }
+.progress-garden .category-bar-row { display: grid; grid-template-columns: 110px 1fr 30px; align-items: center; gap: 0.6rem; font-size: 0.75rem; color: #526e62; }
+.progress-garden .category-bar-track { background: #e1eee6; border-radius: 6px; height: 9px; overflow: hidden; }
+.progress-garden .category-bar-fill { height: 100%; border-radius: 6px; background: #567969; }
+.progress-garden .category-bar-row strong { text-align: right; color: #355a50; }
+.progress-garden .report-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin: 1rem 0; }
+.progress-garden .report-actions button:not(.primary) { border: 1px solid #b9d2c6; border-radius: 100px; background: white; color: #355a50; padding: 0.85rem 1.25rem; }
+.progress-garden .report-narrative { margin: 1rem 0; padding: 1.25rem; border: 1px solid #d0e2db; border-radius: 12px; background: #eaf4ef; }
+.progress-garden .report-narrative .eyebrow { font-size: 0.7rem; letter-spacing: 0.06em; color: #7a9389; }
+.progress-garden .report-narrative p { white-space: pre-wrap; }
+@media (max-width: 760px) {
+  .progress-garden .report-frequency, .progress-garden .category-bar-row { grid-template-columns: 1fr; }
+}
 .progress-garden__footer { background: rgb(245 251 250 / 92%); border-radius: 16px; margin-top: 1rem; padding-inline: 1rem; }
 @media (max-width: 600px) {
   .progress-garden__header { flex-wrap: wrap; }

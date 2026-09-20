@@ -1,4 +1,4 @@
-import { SessionSummaryCollector } from "../../../shared/sessionSummary.js";
+import { SessionSummaryCollector, countWords } from "../../../shared/sessionSummary.js";
 import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import type { AnalyticsTracker } from "../analytics/AnalyticsTracker.js";
@@ -547,7 +547,7 @@ export class VoiceSession {
       (micSnapshot.length / 2 / AUDIO_SAMPLE_RATE_IN) * 1000,
     );
     const turnId = randomUUID();
-    this.summary?.addTurn(turnId);
+    this.summary?.addTurn(turnId, countWords(text));
     this.send({ type: "transcript_final", text, turnId, durationMs });
     logger.info("AUDIO", `utterance captured: ${durationMs}ms`);
 
