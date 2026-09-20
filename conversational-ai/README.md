@@ -299,6 +299,21 @@ Per turn (monotonic clocks, no fabricated values):
 
 UI shows STT (T1−T0), Gemini (T3−T2), TTS (T5−T4), and total perceived (≈ T6−T0).
 
+## Scribe turn commit (silence threshold)
+
+Scribe VAD commits a user turn after `vad_silence_threshold_secs` of silence
+(currently **0.75 s** in `server/src/services/scribe.ts`). That is slightly
+slower than a snappy consumer voice agent on purpose.
+
+People who stutter often pause, block, or hold air mid-thought without having
+finished the idea. A short silence threshold treats those gaps as “end of turn,”
+cuts them off, and starts the assistant while they are still working the word.
+Waiting a little longer for silence is more helpful: it leaves room for the
+motor system to finish, reduces false turn-taking, and keeps the conversation
+from sounding impatient. We accept a modest STT (T1−T0) cost for that clinical
+fit. Do not chase lower silence purely for latency without checking barge-in
+and mid-utterance cutoffs with real stuttering speech.
+
 ## Stutter event detection
 
 ```
@@ -316,8 +331,15 @@ Key properties:
 - Runs on the **original microphone PCM**, never on the Scribe transcript.
 - Slides 3-second windows with a 1.5-second hop; windows below an RMS gate are
   skipped so silence cannot produce false positives.
-- Runs **concurrently with the Gemini response**, so it adds nothing to spoken
-  reply latency (typically 10–40 ms per turn regardless).
+- **Same-turn awareness (not concurrent, not next-turn):** classification is
+  awaited *before* Gemini starts so the reply can react to this utterance’s
+  `[speech_signal: …]` tag. We deliberately moved away from injecting signals
+  on the *next* turn: a one-turn lag meant Vocally answered the hard moment
+  like any ordinary turn, then granted time only afterward — too late for the
+  listener behavior that matters (answer the meaning first, then give
+  permission not to rush). The ONNX cost is typically small (tens of ms) and
+  is an intentional trade for clinical timing; see `prompt.ts` and
+  `session.ts` `onFinalUserTurn`.
 - Labels are independent sigmoids, not a softmax — a turn can be both a block
   and a sound repetition.
 - If `server/models/stutter.onnx` is absent the classifier disables itself and

@@ -53,7 +53,7 @@ export class ScribeTranscriber {
       audio_format: `pcm_${AUDIO_SAMPLE_RATE_IN}`,
       language_code: "en",
       commit_strategy: "vad",
-      vad_silence_threshold_secs: "0.8",
+      vad_silence_threshold_secs: "0.75",
       vad_threshold: "0.64",
       min_speech_duration_ms: "400",
       min_silence_duration_ms: "160",
