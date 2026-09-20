@@ -34,7 +34,10 @@ export class MicrophoneStream {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-        },
+          // Chrome / Chromium: cleans the stream before EnergyVad and Scribe.
+          // Browsers that do not support it ignore the constraint.
+          voiceIsolation: true,
+        } as MediaTrackConstraints,
         video: false,
       });
     } catch (err) {

@@ -3,8 +3,8 @@ import type { TurnMetrics } from "../../../shared/events.js";
 
 /**
  * Honest per-turn latency timeline.
- * T0 is derived from audio clock (bytes sent → Scribe last-word end),
- * not fabricated.
+ * T0 is derived from the mic byte clock at transcript commit
+ * (audio position → perf), not fabricated.
  */
 export class TurnTimeline {
   readonly turnId: string;
@@ -66,7 +66,7 @@ export class TurnTimeline {
 }
 
 /**
- * Maps Scribe audio-relative timestamps to perf_hooks wall clock
+ * Maps audio-relative timestamps to perf_hooks wall clock
  * using bytes-sent as the audio clock.
  */
 export class AudioClock {
@@ -90,8 +90,7 @@ export class AudioClock {
   }
 
   /**
-   * Convert Scribe last-word end (seconds into the audio stream)
-   * into a perf_hooks timestamp.
+   * Convert an audio-stream position (seconds) into a perf_hooks timestamp.
    */
   audioSecondsToPerf(audioSeconds: number): number | null {
     if (this.streamStartPerfMs == null) return null;

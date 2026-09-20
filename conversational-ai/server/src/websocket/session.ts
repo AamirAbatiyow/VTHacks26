@@ -434,8 +434,8 @@ export class VoiceSession {
       onSpeechEnded: () => {
         this.send({ type: "user_speech_ended" });
       },
-      onFinalTurn: (text, lastWordEndSeconds) => {
-        void this.onFinalUserTurn(text, lastWordEndSeconds);
+      onFinalTurn: (text) => {
+        void this.onFinalUserTurn(text);
       },
     });
 
@@ -538,18 +538,17 @@ export class VoiceSession {
     this.micBus.publish(pcm);
   }
 
-  private async onFinalUserTurn(
-    text: string,
-    lastWordEndSeconds: number | null,
-  ): Promise<void> {
+  private async onFinalUserTurn(text: string): Promise<void> {
     if (!this.conversation || this.closed || this.wrappingUp || !text.trim()) return;
     const conversation = this.conversation;
     const turnSequence = ++this.latestTurn;
 
+    // Without Scribe word timestamps (incompatible with filter_background_audio),
+    // T0 is the byte-clock position at commit — slightly after last word due to
+    // VAD trailing silence, but still measured from audio rather than fabricated.
     const t0 =
-      lastWordEndSeconds != null
-        ? this.audioClock.audioSecondsToPerf(lastWordEndSeconds)
-        : null;
+      this.audioClock.audioSecondsToPerf(this.audioClock.currentAudioSeconds()) ??
+      performance.now();
 
     // Original mic PCM for this utterance — not the transcript.
     const micSnapshot = this.utterance.take();

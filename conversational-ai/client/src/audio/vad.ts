@@ -1,7 +1,8 @@
 /**
  * Barge-in VAD. Armed only while the assistant is audible.
- * Requires sustained speech-band energy above a live noise floor so clicks,
- * rustles, coughs, and TTS leak do not steal the floor.
+ * Requires sustained speech-band energy above a live noise floor, with
+ * dB hysteresis and syllable-rate modulation, so clicks, rustles, coughs,
+ * steady HVAC, and TTS leak do not steal the floor.
  */
 export class EnergyVad {
   private ctx: AudioContext | null = null;
@@ -10,10 +11,15 @@ export class EnergyVad {
   private raf: number | null = null;
   private armed = false;
   private triggered = false;
+  private open = false;
   private readonly minRms: number;
   private readonly hangMs: number;
   private readonly graceMs: number;
-  private readonly floorRatio: number;
+  /** Open when rms >= floor * openRatio (~+12 dB). */
+  private readonly openRatio: number;
+  /** Stay open while rms >= floor * holdRatio (~+8 dB). */
+  private readonly holdRatio: number;
+  private readonly modMinCv: number;
   private noiseFloor = 0.012;
   private speechMs = 0;
   private lastTick: number | null = null;
@@ -21,12 +27,24 @@ export class EnergyVad {
   private onSpeech: (() => void) | null = null;
   private timeDomain = new Float32Array(0);
   private frequency = new Float32Array(0);
+  /** Recent short-window RMS samples for envelope modulation (~80–120 ms). */
+  private readonly rmsHistory: number[] = [];
+  private readonly rmsHistoryMax = 8;
 
-  constructor(opts?: { minRms?: number; hangMs?: number; graceMs?: number; floorRatio?: number }) {
+  constructor(opts?: {
+    minRms?: number;
+    hangMs?: number;
+    graceMs?: number;
+    openRatio?: number;
+    holdRatio?: number;
+    modMinCv?: number;
+  }) {
     this.minRms = opts?.minRms ?? 0.07;
-    this.hangMs = opts?.hangMs ?? 420;
+    this.hangMs = opts?.hangMs ?? 520;
     this.graceMs = opts?.graceMs ?? 280;
-    this.floorRatio = opts?.floorRatio ?? 4.2;
+    this.openRatio = opts?.openRatio ?? 4.2;
+    this.holdRatio = opts?.holdRatio ?? 2.5;
+    this.modMinCv = opts?.modMinCv ?? 0.12;
   }
 
   async attach(stream: MediaStream, onSpeech: () => void): Promise<void> {
@@ -47,17 +65,21 @@ export class EnergyVad {
   arm(): void {
     this.armed = true;
     this.triggered = false;
+    this.open = false;
     this.speechMs = 0;
     this.lastTick = null;
     this.armedAt = performance.now();
+    this.rmsHistory.length = 0;
   }
 
   disarm(): void {
     this.armed = false;
     this.triggered = false;
+    this.open = false;
     this.speechMs = 0;
     this.lastTick = null;
     this.armedAt = null;
+    this.rmsHistory.length = 0;
   }
 
   detach(): void {
@@ -87,6 +109,7 @@ export class EnergyVad {
       sum += sample * sample;
     }
     const rms = Math.sqrt(sum / this.timeDomain.length);
+    this.pushRms(rms);
 
     if (!this.armed || this.triggered) {
       this.learnFloor(rms);
@@ -102,8 +125,16 @@ export class EnergyVad {
       return;
     }
 
-    const threshold = Math.max(this.minRms, this.noiseFloor * this.floorRatio);
-    const talking = rms >= threshold && this.looksLikeSpeech();
+    const openAt = Math.max(this.minRms, this.noiseFloor * this.openRatio);
+    const holdAt = Math.max(this.minRms * 0.55, this.noiseFloor * this.holdRatio);
+    if (this.open) {
+      if (rms < holdAt) this.open = false;
+    } else if (rms >= openAt) {
+      this.open = true;
+    }
+
+    const talking =
+      this.open && this.looksLikeSpeech() && this.hasSpeechModulation();
     if (talking) this.speechMs += dt;
     else this.speechMs = Math.max(0, this.speechMs - dt * 2.2);
 
@@ -114,6 +145,11 @@ export class EnergyVad {
       this.onSpeech?.();
     }
   };
+
+  private pushRms(rms: number): void {
+    this.rmsHistory.push(rms);
+    while (this.rmsHistory.length > this.rmsHistoryMax) this.rmsHistory.shift();
+  }
 
   private learnFloor(rms: number): void {
     if (rms >= this.minRms * 0.85) return;
@@ -135,5 +171,25 @@ export class EnergyVad {
       if (hz >= 250 && hz <= 3400) speech += linear;
     }
     return total > 0 && speech / total >= 0.32;
+  }
+
+  /**
+   * Steady HVAC / fan energy sits flat; speech modulates at syllable rates
+   * (~2–8 Hz). Require a minimum coefficient of variation over recent RMS.
+   */
+  private hasSpeechModulation(): boolean {
+    if (this.rmsHistory.length < 4) return false;
+    let mean = 0;
+    for (const v of this.rmsHistory) mean += v;
+    mean /= this.rmsHistory.length;
+    if (mean < 1e-6) return false;
+    let variance = 0;
+    for (const v of this.rmsHistory) {
+      const d = v - mean;
+      variance += d * d;
+    }
+    variance /= this.rmsHistory.length;
+    const cv = Math.sqrt(variance) / mean;
+    return cv >= this.modMinCv;
   }
 }

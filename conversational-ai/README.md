@@ -270,7 +270,7 @@ JSON events (see `shared/events.ts`):
 
 ## Interruption architecture
 
-1. While the assistant speaks, client **EnergyVad** (RMS) is armed.
+1. While the assistant speaks, client **EnergyVad** (RMS + speech-band + modulation) is armed.
 2. User speech → client **immediately** `player.clear()` and sends `interrupt`.
 3. Scribe `partial_transcript` with real words is the **server-side backstop**.
 4. Server `ConversationManager.interrupt(generationId)`:
@@ -289,7 +289,7 @@ Per turn (monotonic clocks, no fabricated values):
 
 | Mark | Meaning |
 |------|---------|
-| T0 | User speech ended (from Scribe last-word timestamp via audio-clock bytes mapping) |
+| T0 | User speech ended (mic byte-clock position at transcript commit) |
 | T1 | Final transcript ready |
 | T2 | Gemini request starts |
 | T3 | First Gemini token |

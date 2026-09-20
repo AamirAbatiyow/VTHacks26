@@ -9,11 +9,8 @@ export interface ScribeHandlers {
   onInterim?: (text: string) => void;
   onSpeechStarted?: () => void;
   onSpeechEnded?: () => void;
-  /**
-   * Fired once per committed utterance with the finalized transcript and
-   * last-word end (seconds into the stream) when timestamps are available.
-   */
-  onFinalTurn?: (text: string, lastWordEndSeconds: number | null) => void;
+  /** Fired once per committed utterance with the finalized transcript. */
+  onFinalTurn?: (text: string) => void;
 }
 
 interface ScribeMessage {
@@ -21,7 +18,6 @@ interface ScribeMessage {
   text?: string;
   error?: string;
   message?: string;
-  words?: Array<{ end?: number; type?: string }>;
 }
 
 /**
@@ -35,7 +31,6 @@ export class ScribeTranscriber {
   private open = false;
   private closed = false;
   private flushedForCurrentUtterance = false;
-  private lastWordEndSeconds: number | null = null;
   private speaking = false;
   /** Mic audio arriving before the socket opens, flushed on open. */
   private pendingAudio: Buffer[] = [];
@@ -59,10 +54,12 @@ export class ScribeTranscriber {
       language_code: "en",
       commit_strategy: "vad",
       vad_silence_threshold_secs: "0.8",
-      vad_threshold: "0.58",
-      min_speech_duration_ms: "280",
+      vad_threshold: "0.64",
+      min_speech_duration_ms: "400",
       min_silence_duration_ms: "160",
-      include_timestamps: "true",
+      // Reduces false activation from background speech/noise. Cannot combine
+      // with include_timestamps — T0 falls back to our byte clock instead.
+      filter_background_audio: "true",
     });
     const url = `wss://api.elevenlabs.io/v1/speech-to-text/realtime?${params}`;
 
@@ -211,21 +208,11 @@ export class ScribeTranscriber {
       return;
     }
 
-    if (type === "committed_transcript_with_timestamps") {
-      const words = msg.words ?? [];
-      for (let i = words.length - 1; i >= 0; i--) {
-        const end = words[i]?.end;
-        if (typeof end === "number") {
-          this.lastWordEndSeconds = end;
-          break;
-        }
-      }
-      this.flushTurn(msg.text ?? "", "committed_timestamps");
-      return;
-    }
-
-    if (type === "committed_transcript") {
-      this.flushTurn(msg.text ?? "", "committed");
+    if (
+      type === "committed_transcript" ||
+      type === "committed_transcript_with_timestamps"
+    ) {
+      this.flushTurn(msg.text ?? "", type === "committed_transcript_with_timestamps" ? "committed_timestamps" : "committed");
     }
   }
 
@@ -240,6 +227,6 @@ export class ScribeTranscriber {
       return;
     }
     logger.info("SCRIBE", `${reason} → final turn`);
-    this.handlers.onFinalTurn?.(cleaned, this.lastWordEndSeconds);
+    this.handlers.onFinalTurn?.(cleaned);
   }
 }
